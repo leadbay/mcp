@@ -231,6 +231,19 @@ The product face is `Nikkei Maru`; the stack names it first and falls back to
 the system UI font. Do **not** add an `@font-face` — artifacts are inline-only
 and a remote font URL will silently fail.
 
+Colour TEXT through the role tokens `--lb-text-blue`, `--lb-text-green`,
+`--lb-text-red` and `--lb-text-teal`, never straight from
+`--color-*-foreground`. The palette is the web app's, and its light-mode
+foregrounds are made for icons, borders and dots: as small text they fall
+under AA (3.4–4.3:1). The role tokens keep the hue, clear 4.5:1 on every light
+ground, and turn back into the palette in dark mode.
+
+`lb.styles()` injects the skin AFTER the page's own `<style>`, and `.lb-card`
+is a grid. A rule like `.ask { display: flex }` on a card ties on specificity
+and loses, so the card's buttons stretch to its full width and stop lining up.
+Give a card its own layout with `.lb-card.ask`, never a lone class. The
+welcome board (`templates/onboarding`) does this for every card.
+
 ## One page, three surfaces
 
 The finished boards open in cowork, as a published claude.ai artifact, and —
@@ -532,6 +545,132 @@ For the other batch tools below, the template does not fit yet — it loads
 the Discover batch, not theirs — so those boards are still built from this
 recipe.
 
+Motion on the board, all of it deliberate — a board built from this recipe
+copies it and adds nothing:
+
+- the header and toolbar are laid out as: the title with the lead count as
+  a hairline pill beside it (the count describes the list, so it sits with
+  the list's title, a `role="status"` region); one toolbar row centred on
+  its controls, the two filters leading with their captions beside the
+  pickers (20px between filters, 8px caption to picker), "Select all on this
+  page" trailing. The status picker and Apply appear only once something is
+  selected, led by "N selected". On a phone each caption sits over a
+  full-width picker;
+- a card reads in two groups, set apart by space alone: what the lead is
+  (fit, intent, data) and what the rep does about it (status, prospecting,
+  note). Sections are 16px apart; the second group starts 28px down
+  (`.act-start` on Status). The note field and its button share one row
+  (the button at its label's width, wrapping under the field on a narrow
+  card), so the black button is no longer the heaviest thing on the card.
+  The contact's linked name carries the LinkedIn mark inline before it, in
+  the link's own colour;
+- the person and the company are two titled sections, never one "Data"
+  block: **Recommended contact** (the LinkedIn-linked name and job title)
+  and **Company**, a column of the switchboard (`tel:` link), the email
+  (`mailto:`) and the website, with every `social_urls` platform that has a
+  URL as an icon-only link in a second column beside them: the platform's
+  own mark (LinkedIn, Facebook, Instagram, X, TikTok, Crunchbase; any other
+  gets a globe) in a 32px square, muted and ink on hover, three to a row,
+  with a tooltip and an aria-label naming the platform and the company.
+  Never a fixed list; no column when Leadbay sends none. On a card too
+  narrow for both, the icons wrap under the lines.
+  The phone and email are the company's lines, so they never sit under the
+  contact's name. The company lines carry line icons (phone, mail, globe,
+  building), the welcome board's set: inline SVG, 24px grid, `currentColor`,
+  14px at a 1.5px stroke in the muted colour — never emoji. The contact line
+  carries no glyph: its title and the LinkedIn mark already say it is a
+  person;
+- the board enters once, in reading order, 50ms apart (280ms each): the
+  title and its count, its line, the toolbar's box, then the filters and the bulk apply,
+  then the first batch of cards (60ms stagger capped at the sixth card; they
+  wait for the toolbar, or start at once when the batch lands late), then the
+  pager. Filters, select-all and later pages render instantly, because a rep
+  does them all day;
+- the first load shows three skeleton cards in the lead card's shape (title
+  row and taste squares, tags, lines, section bars, status field, the four
+  action tiles, note field and button, footer), grey bars pulsing gently
+  (still under reduced motion), entering just after the toolbar, with a
+  hidden "Loading today's leads…" status line for screen readers. They are
+  `.sk-card`, never `.lb-card`, so nothing waiting for the first lead card
+  takes a skeleton for it. When the leads land on settled skeletons, each
+  of the first three cards takes its skeleton's place where it stands and
+  only its contents fade in (180ms, `.triage-swap`): no second entrance, no
+  jump. Data that lands while the skeletons are still entering gets the
+  plain entrance; The "no lead matches" empty state spans the grid
+  (`grid-column: 1 / -1`);
+- the card grid carries `lb-deck`, so it dims while the next page loads
+  (opacity eased over 150ms). Without the class Next looks dead until the new
+  cards land;
+- a like or dislike fades its chip in (120ms), and a status line fades to its
+  new text;
+- the prospecting actions and the skin's buttons press to `scale(0.97)`.
+
+Every one of them is opacity or transform only. The entrance uses the iOS
+drawer curve `cubic-bezier(0.32, 0.72, 0, 1)`, which settles softly: it
+plays once and answers no click. Everything that answers a click (the
+presses, the chip, the status line, the dim) keeps the snappier
+`cubic-bezier(0.23, 1, 0.32, 1)`. Reduced motion keeps the fades and drops
+the movement.
+
+Five more things the board gets right, each a failure a rep hit or would hit:
+
+- **It fits a 320px screen.** The card column is `minmax(min(320px, 100%), 1fr)`;
+  a plain `minmax(320px, 1fr)` ran 32px off a phone and cut the status,
+  actions and "Open" off every card.
+- **A ticked prospecting action shows by a ✓, not colour alone.** The dot
+  stays filled in the action's colour either way. Light mode darkens the "Could
+  not reach" yellow for its dot and border (`oklch(0.60 0.13 91)`); the web
+  app's `#ffcc00` was 1.44:1 on the card.
+- **Coloured text uses the text-role tokens** (`--lb-text-green`,
+  `--lb-text-red`), never a palette `--color-*-foreground`, which is for
+  icons and dots and fails AA as 12px text.
+- **A failed first load says so, with "Try again".** "No lead matches these
+  filters" would be false, and the pager has no page to offer. A failed page
+  flip keeps the cards and says to choose the page again. Every error ends
+  with its next step.
+- **A clamped excerpt gets "Show more"**, shown only when the 3-line clamp
+  actually cuts it, so the qualifier's full answer is always reachable.
+
+**The shipped triage board sets its section titles and field captions in
+natural case** ("Adéquation", "Avis"), 13px / 600 in the ink colour, with no
+tracking, overriding the skin's uppercase in its own sheet. The skin keeps
+uppercase for every other board; the letter-spacing is there to air out the
+capitals and goes with them.
+
+And the rest of what its interface review fixed, which a board built from
+this recipe keeps:
+
+- **Keyboard focus stays where the rep is.** A button disabled while it
+  saves drops its focus, so the kit gives it back when the write settles
+  (`lb.bindAction`); the prospecting actions use `aria-disabled` instead of
+  `disabled`; Previous / Next return focus after the flip. While a page loads
+  the old deck is `inert` and `aria-busy`, not only dimmed.
+- **No empty rows.** The chips row is hidden with its chip, and an empty
+  `.lb-msg` leaves the flow (the skin's `.lb-msg:empty`), so every card keeps
+  one rhythm and a like no longer pushes the card down.
+- **Contact lines use `.lb-facts` / `.lb-fact`**: the glyph in its own
+  column, so a wrapped line hangs under its text; glyphs are tied to their
+  value with a no-break space and the phone never splits.
+- **The company name is an `<h2>`** and the card checkbox sits in a 34px
+  `.lb-pick` label. The tally is `role="status"`, so a filter change is
+  announced, and keeps its width, so the filters beside it never move.
+- **One name per thing.** The filter and the card both say "AI adjustment",
+  "AI boost +12", "AI penalty −6"; a single lead's chip is singular ("Aimé").
+  An empty contact line points at a control that exists ("Open in Leadbay to
+  enrich this lead"). The shipped board's note button reads "Save note": it
+  writes a note, which "Log outreach" (the action that marks a lead as
+  contacted) does not.
+
+**One entrance timing for every board.** The welcome board, the triage board
+and the route planner share it, declared once at the top of each page so it
+is tuned in one place:
+
+```css
+:root { --enter-dur: 280ms; --enter-ease: cubic-bezier(0.32, 0.72, 0, 1); --enter-step: 50ms; }
+```
+
+A board built from these recipes uses the same three values.
+
 On the MCP Apps connectors the same page is the view `leadbay_pull_leads`
 opens in the chat: it renders that call (`lb.openingResult()`), takes the
 agent's `count` and `lensId` for its next pages, and labels itself in English
@@ -589,8 +728,8 @@ spacing CSS of your own:
 ```html
 <article class="lb-card">
   <div class="lb-card-top">                   <!-- checkbox · title · taste -->
-    <input type="checkbox" aria-label="Select Acme Corp for bulk apply">
-    <div class="lb-lead-title"><a href="https://acme.com">Acme Corp</a></div>
+    <label class="lb-pick"><input type="checkbox" aria-label="Select Acme Corp for bulk apply"></label>  <!-- 34px target -->
+    <h2 class="lb-lead-title"><a href="https://acme.com">Acme Corp</a></h2>  <!-- a heading: screen readers jump card to card -->
     <span class="lb-group"><!-- like / dislike, lb-btn-icon --></span>
   </div>
   <div class="lb-chips" hidden><!-- data-taste + data-status, see contract --></div>
@@ -718,12 +857,24 @@ the pager whenever `total` exceeds one page:
 
 ```html
 <div class="lb-pager">
-  <button class="lb-btn" data-k="prev">Previous</button>
-  <button class="lb-btn" data-k="next">Next</button>
-  <span class="lb-spacer"></span>
   <span class="lb-pager-range">21–40 of 60</span>
+  <span class="lb-spacer"></span>
+  <nav class="pages" aria-label="Pagination">
+    <button class="lb-btn" data-k="prev">Previous</button>
+    <!-- numbered pages: 1 2 [3] … 9 -->
+    <button class="lb-btn" data-k="next">Next</button>
+  </nav>
 </div>
 ```
+
+The range reads first, on the left; the controls sit at the bottom right,
+where the eye lands after the last card. Between Previous and Next go
+numbered pages: all of them up to seven, past that the first, the last and
+the current one with its neighbours, with "…" for the gaps. The current page
+carries `aria-current="page"` and a solid fill; each number's label is
+"Page n". The triage board (`templates/triage-board/`) is the reference
+implementation, including keeping keyboard focus on the number row across a
+flip.
 
 ```js
 const list = lb.leadList({ order: sort, ask: ASK, pageSize: 20 });
@@ -743,13 +894,19 @@ next.onclick = () => list.next();
 Four things this gets right that a hand-rolled pager usually does not:
 
 - **A range, not a page number.** "21–40 of 60" says how much is left; "page 2"
-  does not, and a rep cannot tell a short lens from a long one.
+  does not, and a rep cannot tell a short lens from a long one. Numbered
+  pages may sit beside the range for jumping, never in place of it.
 - **Disable at the ends, and while loading.** `hasMore` is
   `(page + 1) * pageSize < total`, so it is false on the last page even when
   that page is full — a Next that fetches nothing reads as a broken button.
 - **Keep the old rows while the next page loads.** Blanking the deck loses the
   scroll position; `lb-deck[data-lb-state=loading]` dims and locks it instead.
   `loadPage` already drops a stale response if the rep flips pages quickly.
+- **Scroll back to the top on a flip.** The pager sits under the last card, so
+  a flip leaves the rep at the bottom of the new page. When the board's top is
+  off-screen, scroll it into view as the flip starts (smooth; instant under
+  reduced motion), and restore focus with `focus({ preventScroll: true })` so
+  it does not pull the view back down.
 - **Selection and page are independent.** A checked lead on page 1 stays in the
   bulk set after a flip, so either carry the selection across pages or clear it
   on the flip — silently dropping it means a bulk apply writes fewer leads than
@@ -1052,18 +1209,27 @@ white text on a white page, borders jumped from `#e0e0e0` to mid grey. Same
 rule as the triage board: these boards are light for everyone.
 
 ```css
-/* Tripled on purpose. lb.styles() APPENDS the skin to <head> at runtime, i.e.
-   after this sheet, so a plain :root here loses to the skin's
-   :root[data-theme=dark] on source order. :root:root:root outranks it on
-   specificity instead, which source order cannot undo. */
-:root:root:root {
+/* Quadrupled on purpose. lb.styles() APPENDS the skin to <head> at runtime,
+   i.e. after this sheet, so a plain :root here loses to the skin's dark
+   blocks on source order. :root:root:root:root outranks them on
+   specificity instead, which source order cannot undo: the host's
+   :root[data-theme=dark] is (0,2,0), and the OS one,
+   :root:not([data-theme=light]):not([data-lb-theme=light]), is (0,3,0).
+   Tripled only TIES that second one and loses on order. */
+:root:root:root:root {
   --lb-surface: var(--color-gray-1);  --lb-border: var(--color-gray-3);
   --lb-fg: var(--color-black);        --lb-muted: var(--color-gray-8);
   --lb-field: var(--color-white);     --lb-chip-bg: var(--color-gray-2);
+  --lb-page-bg: var(--color-gray-2);  --lb-btn-border: var(--color-gray-5);
   color-scheme: light;
-  /* …and the semantic pairs the pins and chips read, at their light values. */
+  /* …and every other token the dark blocks change, at its light value: the
+     --lb-text-* colours and the semantic pairs the pins and chips read. */
 }
 ```
+
+The route planner (`templates/route-planner/page.html`) carries the full pin.
+Check a pinned board with the OS in dark mode, not only a dark host: the OS
+block is the stronger of the two.
 
 A single `data-lb-theme="light"` on `<html>` does the same job and is simpler
 — use it when the page owns its `<html>` element. An artifact that is a
@@ -1246,6 +1412,31 @@ under the last one, so there is no special case to forget.
 Straight-line totals from `lb.routeDistanceKm` are "as the crow flies" — label
 them that way rather than implying a drive time.
 
+### The panel survives its own rebuild
+
+The panel is rebuilt on every change, so the board carries three things
+across by hand. Keep all three if you touch `renderPanel`:
+
+- **Scroll** goes back to the top only for a new view (the overview, or
+  another lead). Moving a stop, adding one or more leads loading keeps the
+  rep's place.
+- **Focus** returns to the button the rep pressed, found by its
+  `data-focus-key`. A keyboard user can press "move up" twice in a row.
+- **Moved stops slide** from their old place to the new one (220ms,
+  `cubic-bezier(0.23, 1, 0.32, 1)`, transform only), so "Shortest order" shows
+  what it changed. Under reduced motion they fade in instead, and every map
+  move (`flyTo`, "Fit to leads") is instant.
+
+The board enters once, in reading order, with the shared entrance timing
+(50ms apart, 280ms each, `--enter-*`): the title, the tally, the city field and its buttons, the
+hint, the legend, then the map and the panel. Only pieces that are never
+rebuilt take part; under reduced motion they fade in together.
+
+The stop tools and the prospecting-action choices press like the skin's
+buttons (`scale(0.97)`, 160ms). Nothing else in the panel moves: switching
+between the overview and a lead does not animate, because a rep does it
+dozens of times a day and the map's flight already bridges it.
+
 ## Recipe: the LEAD DESK (the default board for working leads)
 
 When the rep accepts the board after `leadbay_pull_followups` or
@@ -1278,6 +1469,115 @@ Changing the source or the sort resets to page 0 — page 2 of the old list is
 not page 2 of the new one. Every row is a `lb.relanceRow`, which now carries
 taste and qualify alongside contacts, status and outreach, so the row is
 complete whichever source it came from.
+
+## Recipe: the WELCOME board (a new user's first look)
+
+Served finished — do not build this by hand. Ask the kit for
+`template: "onboarding"` and publish the page as it is. `leadbay_welcome`
+says when: on a first visit, or when the user asks what Leadbay can do. On
+the MCP Apps surfaces the host shows it for `leadbay_welcome` on its own.
+
+It is the web app's welcome dialog, carried into the chat:
+
+- a greeting by first name;
+- **what our AI learned** about the business — intent signals, qualification
+  questions, the ideal buyer profile. Each section hides when Leadbay has
+  nothing for it, and the whole card hides when every section is empty. The
+  intent signals use `lb-tags-intent`, the same teal as the lead cards' intent
+  tags, so a signal looks the same wherever it appears. The ideal buyer
+  profile's summary opens with a bold "Summary:" / "Résumé :" lead-in, so a
+  summary Leadbay wrote as a fragment ("pour les équipes…") still reads as a
+  labelled line;
+- **what you can ask Leadbay** — one card per thing it does in the chat;
+- one footer action, the primary button: **Join the next live onboarding**
+  (the web app's luma.com session). There is no tour button: the guided tour
+  (`leadbay_getting_started`) is for users who ask to be walked through.
+
+Every card is a phrase the user would type, with one button. The button
+calls `lb.sendToChat(phrase, {label})`, which reaches the chat on two
+surfaces:
+- **MCP Apps host** (ChatGPT …): posts the phrase as the user's own message
+  (`ui/message`).
+- **Published claude.ai artifact** that declares the `room` capability (the
+  template does): hands `{from, label, request}` to the viewer's own Claude
+  conversation with `room.sendToClaudeSession(…, {deliver: "send"})`.
+  Claude's dialog asks them to confirm, and their Send starts the turn. Where
+  only a staged send is offered, the request waits in their composer.
+  `sendToChat` must be called straight from the click, with nothing awaited
+  before it, or claude.ai refuses it.
+
+On cowork neither exists, so `sendToChat` resolves `false` and the button
+copies the phrase instead. If the frame blocks the clipboard too, the button
+selects the phrase and tells the user to paste it. Label the button from
+`lb.canSendToChat()`, checked after both `lb.openingResult()` and
+`lb.chatSendReady()` resolve: "Ask Leadbay" when the phrase will be sent,
+"Copy the phrase" when it will not.
+Use the same pattern for any button whose job is to hand the next request
+to the assistant. When several buttons share one label, point each one's
+`aria-describedby` at its card's title, and keep its status line rendered
+while empty (never `display: none`), or screen readers miss "Copied".
+
+Where the buttons only copy, the board says so above the cards: "To start
+right away, pick one of the suggestions in the chat. Or copy any phrase below
+and paste it." The assistant MUST
+then offer `leadbay_welcome`'s `starters` through its choice widget right
+after publishing the board, because those clicks are the one-click start on
+Claude.
+
+What the board gets right after its interface review — keep it:
+
+- **A failed account read offers Try again** beside the subtitle that says
+  so (back to the skeleton, one more `leadbay_welcome`). The subtitle is a
+  live region, so loaded, failed and plain are announced; the "still
+  learning" notice is not a second competing one, and it says what to do
+  ("ask for today's leads in a few minutes"). The notice is neutral grey:
+  blue on this board means a link.
+- **Two groups, not four peers.** The learned card's section titles are
+  15px, a step under "What you can ask" (17px).
+- **Colour on the ask cards lives in the icon tile, nowhere else.** Each icon
+  sits on a 32px tile tinted with 14% of its hue, one hue per pair of related
+  jobs: purple for the AI's picks and targeting (the kit's AI colour), teal
+  for research and reaching out, green for following up, cherry for
+  organising. Never blue, which is a link here. Titles stay ink, descriptions
+  muted, so the tile is the one accent per card.
+- **The ask grid is 1, 2 or 4 columns** (breakpoints 520px and 988px),
+  counts that divide the eight cards, never 3 / 3 / 2 with a hole. Each card
+  is named by its title; its icon sits on the title's first line; one status
+  line is reserved under its button, so "Copied" never pushes the row.
+- **Late reveals start at once.** The learned card, the notice and the chat
+  hint, shown after the first paint, drop their entrance delay; the slide
+  measures the ask grid itself, and nothing animates on top of a running
+  entrance.
+- **French typography:** a narrow no-break space before ? ! : and inside the
+  « » that quote the phrases on a French page (the phrase sent or copied is
+  the bare words).
+
+Until the board knows whether its buttons send or copy, each ask card's
+button is hidden and a skeleton bar of its size holds its spot (same grey and
+pulse); the button fades in where the bar stood.
+
+While the account loads, a skeleton of the "what our AI learned" card (grey
+bars for its titles, lines, tags and question tiles, pulsing gently, still
+under reduced motion) holds that card's place, so the board never shows a
+blank gap; it goes once the account is read or could not be. The Leadbay
+mark is black in every theme; on a dark host or a dark OS it sits on a white
+rounded tile with padding around it rather than turning white.
+
+The board fades in on its first paint, in reading order: each title, then
+what it heads, then the next title, each piece rising 8px with the shared
+entrance timing (280ms on `cubic-bezier(0.32, 0.72, 0, 1)`, 50ms apart), the
+ask cards 35ms apart.
+The cards are built once and only relabelled after, so nothing replays. When
+the account arrives late, the greeting fades to its new text and the sections
+below the "what our AI learned" card slide down to make room instead of
+jumping. It animates opacity and transform only, never height, so the MCP App's
+iframe does not jump while it sizes itself. It plays once, because only
+pieces the script never rebuilds take part. Under `prefers-reduced-motion`
+the pieces only fade, without moving. Publish the page as it is; do not add or strip
+motion.
+
+Changes to the board are made in the template source
+(`templates/onboarding/`), never in a re-implementation.
 
 ## Recipe: relance table (the follow-up board)
 

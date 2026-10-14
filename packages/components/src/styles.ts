@@ -70,16 +70,39 @@ export const STYLES = `
 --lb-page-bg:var(--color-gray-2);
 --lb-control-border:var(--color-gray-6);
 --lb-shadow:0 0.5rem 1.5rem oklch(0 0 0/.06),0 0.125rem 0.5rem oklch(0 0 0/.04);
+/* Coloured TEXT, by role. The palette above is the web app's, verbatim, and
+   its 0.564-lightness foregrounds were made for icons, borders and dots. As
+   12–13px text on a light ground they measured 3.4–4.3:1, under AA. These
+   keep each hue and chroma and only lower the lightness until every light
+   ground they sit on (white, gray-1, gray-2, their own tint) clears 4.5:1.
+   Dark mode points them back at the palette, which already passes there. */
+/* sRGB first: these oklch values sit outside sRGB, so each browser clipped
+   or mapped them its own way and the contrast moved with it. The oklch
+   originals return on P3 screens (the color-gamut block below). */
+--lb-text-blue:#006bbc;--lb-text-green:#197b00;
+--lb-text-red:oklch(0.543 0.191 26);--lb-text-teal:#006d5f;
+/* A plain button follows the theme: --lb-fg on --lb-field, like every
+   control. It was a fixed white, so in dark mode it looked exactly like the
+   inverted primary (.lb-btn-submit) and the primary stopped standing out. */
+--lb-btn-border:var(--color-gray-6);
 color-scheme:light;
 /* macOS renders text heavier than intended. This belongs once on the root,
    never per component — an artifact that injects this sheet gets it for free
    instead of each page re-declaring it on its own body. */
 -webkit-font-smoothing:antialiased;
 -moz-osx-font-smoothing:grayscale;
-}
+}@media(color-gamut:p3){:root{--lb-text-blue:oklch(0.521 0.181 251);--lb-text-green:oklch(0.509 0.181 141);
+--lb-text-teal:oklch(0.479 0.182 180)}}
+
 :root[data-theme=dark],:root[data-lb-theme=dark]{
 --lb-surface:var(--color-gray-9);--lb-border:var(--color-gray-8);
---lb-fg:var(--color-white);--lb-muted:var(--color-gray-3);
+/* Muted is gray-5, not gray-3: gray-3 (#e0e0e0) sat so close to the white
+   --lb-fg that helper text read as loud as headings. gray-5 still clears AA
+   on the chip (6.4:1), the field and the card. */
+--lb-fg:var(--color-white);--lb-muted:var(--color-gray-5);
+--lb-text-blue:var(--color-blue-foreground);--lb-text-green:var(--color-green-foreground);
+--lb-text-red:var(--color-red-foreground);--lb-text-teal:var(--color-teal-foreground);
+--lb-btn-border:var(--color-gray-7);
 /* --lb-field must NOT equal --lb-surface: a control needs its own ground or it
    reads as text on the card (was 1.00:1). */
 --lb-field:#2c2c2c;
@@ -99,7 +122,10 @@ color-scheme:dark;
 }
 @media(prefers-color-scheme:dark){:root:not([data-theme=light]):not([data-lb-theme=light]){
 --lb-surface:var(--color-gray-9);--lb-border:var(--color-gray-8);
---lb-fg:var(--color-white);--lb-muted:var(--color-gray-3);
+--lb-fg:var(--color-white);--lb-muted:var(--color-gray-5);
+--lb-text-blue:var(--color-blue-foreground);--lb-text-green:var(--color-green-foreground);
+--lb-text-red:var(--color-red-foreground);--lb-text-teal:var(--color-teal-foreground);
+--lb-btn-border:var(--color-gray-7);
 /* --lb-field must NOT equal --lb-surface: a control needs its own ground or it
    reads as text on the card (was 1.00:1). */
 --lb-field:#2c2c2c;
@@ -146,12 +172,19 @@ text-wrap:balance}
 .lb-card-top{display:flex;align-items:center;gap:0.625rem;flex-wrap:wrap}
 .lb-card-top>.lb-group{flex:0 0 auto;margin-inline-start:auto}
 .lb-card-top>input[type=checkbox]{flex:0 0 auto;width:1rem;height:1rem;margin:0}
+/* A bare 16px box was the smallest target on the card: wrap it in a
+   .lb-pick label, 40px square, pulled in by its own overhang so the row
+   lays out exactly as it did around the bare box (40px: the dense-desktop
+   minimum). */
+.lb-card-top>.lb-pick{flex:0 0 auto;display:grid;place-items:center;width:2.5rem;height:2.5rem;
+margin:-0.75rem;cursor:pointer}
+.lb-pick>input[type=checkbox]{width:1rem;height:1rem;margin:0;cursor:pointer}
 /* The company name. Bold and underlined so it reads as the card's subject and
    as a link, without competing with the uppercase section titles. */
 /* text-wrap:balance keeps a two-line company name from breaking one-word-over;
    the underline takes its position and thickness from the font's own metrics
    rather than wherever the browser puts them, and skip-ink clears descenders. */
-.lb-lead-title{flex:1 1 9rem;min-width:0;font-size:0.9375rem;font-weight:700;
+.lb-lead-title{margin:0;flex:1 1 9rem;min-width:0;font-size:0.9375rem;font-weight:700;
 line-height:1.3;color:var(--lb-fg);text-wrap:balance;text-decoration:underline;
 text-underline-position:from-font;text-decoration-thickness:from-font;
 text-underline-offset:2px;text-decoration-skip-ink:auto;overflow-wrap:break-word}
@@ -161,6 +194,9 @@ text-underline-offset:2px;text-decoration-skip-ink:auto;overflow-wrap:break-word
    read as three unrelated things. */
 .lb-section>.lb-select,.lb-section>.lb-input,
 .lb-stack>.lb-select,.lb-stack>.lb-input,.lb-stack>.lb-btn{width:100%;min-width:0}
+/* Beside fields, a button takes their corners (and the card's concentric
+   0.625rem); a free-standing button keeps the product's 7px. */
+.lb-stack>.lb-btn,.lb-toolbar .lb-btn{border-radius:var(--lb-radius-sm)}
 /* Footer: a leading action, a spacer, a trailing escape hatch. */
 .lb-card-foot{display:flex;align-items:center;gap:0.625rem;
 padding-block-start:0.875rem;border-block-start:1px solid var(--lb-border)}
@@ -188,6 +224,10 @@ white-space:nowrap}
    same treatment as a card's section title. */
 .lb-field-label{font-size:0.75rem;font-weight:700;letter-spacing:.08em;
 text-transform:uppercase;color:var(--lb-fg)}
+/* Beside a checkbox the label is the control's own text, not a caption over
+   it: body size, natural case, so "Select all" does not read as a third
+   heading next to the filters' captions. */
+.lb-field-inline>.lb-field-label{font-size:0.8125rem;font-weight:500;letter-spacing:normal;text-transform:none}
 /* A labelled field sizes to its own content, so width:100% on the control
    inside only fills whatever the field already became. Two fields side by side
    still come out unequal — they have no shared reference to be equal against.
@@ -254,7 +294,7 @@ stroke-linejoin:round;stroke-linecap:round}
 background-color:var(--lb-field);border:1px dashed var(--lb-border);
 border-radius:1.375rem;corner-shape:squircle;text-align:center}
 .lb-empty-title{font-size:0.8125rem;font-weight:600;color:var(--lb-fg);line-height:1.4}
-.lb-empty-hint{font-size:0.78125rem;color:var(--lb-muted);line-height:1.45;max-width:44ch}
+.lb-empty-hint{font-size:0.75rem;color:var(--lb-muted);line-height:1.45;max-width:44ch}
 /* A page flip replaces the whole deck, so the rows must read as pending or the
    rep cannot tell a slow page from a finished one. Dim and lock the deck
    rather than blanking it: keeping the old rows on screen preserves the
@@ -305,6 +345,12 @@ text-wrap:pretty;overflow-wrap:break-word;max-width:68ch}
 .lb-select,.lb-input{font:inherit;font-family:var(--lb-font);font-size:0.8125rem;color:var(--lb-fg);
 background-color:var(--lb-field);border:1px solid var(--lb-control-border);
 border-radius:var(--lb-radius-sm);corner-shape:squircle;padding:0.4rem 0.55rem;min-height:2.125rem}
+/* iOS zooms the whole page when a field under 16px takes focus. */
+@media(pointer:coarse){.lb-select,.lb-input{font-size:1rem}}
+/* The placeholder is often a field's only visible prompt: the muted token,
+   not the browser default (3.8:1 in Firefox). */
+.lb-input::placeholder{color:var(--lb-muted);opacity:1}
+.lb-input[aria-invalid=true]{border-color:var(--color-red-foreground)}
 /* Geometry, states and motion ported from the product's Button component
    (packages/ui/components/Button) so an artifact button and an app button are
    the same object. MUI spacing is 8px/unit, so its size=medium (py .875,
@@ -314,8 +360,8 @@ border-radius:var(--lb-radius-sm);corner-shape:squircle;padding:0.4rem 0.55rem;m
    large. The app's default variant is secondary — white ground, gray-5
    border, black text — which is what an unadorned .lb-btn already was. */
 .lb-btn{font:inherit;font-family:var(--lb-font);font-size:0.8125rem;font-weight:600;
-color:var(--color-black);background-color:var(--color-white);
-border:1px solid var(--color-gray-5);
+color:var(--lb-fg);background-color:var(--lb-field);
+border:1px solid var(--lb-btn-border);
 border-radius:0.4375rem;corner-shape:squircle;padding:0.4375rem 0.4375rem;min-height:2.125rem;
 cursor:pointer;user-select:none;-webkit-user-select:none;text-wrap:nowrap;
 font-variant-numeric:tabular-nums;
@@ -325,8 +371,22 @@ opacity .16s ease,transform .16s cubic-bezier(0.23,1,0.32,1)}
 @media (hover:hover){
 .lb-btn:hover:not([disabled]):not([data-lb-state=loading]){
 background-color:var(--color-gray-2)}}
+/* Dark: the button's ground is now --lb-field, so a gray-2 hover would put
+   white text on light grey. :where() keeps the specificity of the rule above,
+   and the variants below (.lb-btn-submit, .lb-btn-ai …) still win on order. */
+@media (hover:hover){
+:where(:root[data-theme=dark],:root[data-lb-theme=dark]) .lb-btn:hover:not([disabled]):not([data-lb-state=loading]){
+background-color:var(--lb-chip-bg)}}
+@media (hover:hover) and (prefers-color-scheme:dark){
+:where(:root:not([data-theme=light]):not([data-lb-theme=light])) .lb-btn:hover:not([disabled]):not([data-lb-state=loading]){
+background-color:var(--lb-chip-bg)}}
 /* Front-loaded press, so the tap leads the colour crossfade. */
 .lb-btn:active:not([disabled]):not([data-lb-state=loading]){transform:scale(0.97)}
+/* Reduced motion keeps the press, without the movement: a brief dim instead
+   of the scale, as the triage board's prospecting actions already do. */
+@media(prefers-reduced-motion:reduce){
+.lb-btn{transition:background-color .16s ease,border .16s ease,color .16s ease,opacity .16s ease}
+.lb-btn:active:not([disabled]):not([data-lb-state=loading]){transform:none;opacity:.85}}
 .lb-btn[disabled]{opacity:.4;cursor:default}
 /* A text button with a label + icon: the app lays the content out as a flex row
    with a 6px gap (its content style uses gap 0.75). */
@@ -388,10 +448,15 @@ background-color:color-mix(in srgb,var(--lb-muted) 10%,var(--lb-field))}
    past the 34px box without inflating the row. */
 .lb-btn-icon{position:relative}
 .lb-btn-icon::before{content:"";position:absolute;inset:-5px}
+/* Side by side, two 5px overhangs overlapped in the group's 6px gap and the
+   second button won the strip: 10px apart, the targets meet, never overlap. */
+.lb-group>.lb-btn-icon+.lb-btn-icon{margin-inline-start:0.25rem}
+/* The ring follows each control's own corners; only a link, which has none,
+   is given a radius (setting one on a button reshaped it on focus). */
 .lb-btn:focus-visible,.lb-select:focus-visible,.lb-input:focus-visible,
 .lb-link:focus-visible{
-outline:2px solid var(--color-blue-foreground);outline-offset:1px;
-border-radius:var(--lb-radius-sm)}
+outline:2px solid var(--color-blue-foreground);outline-offset:1px}
+.lb-link:focus-visible{border-radius:var(--lb-radius-sm)}
 /* Forced colours replaces every background and custom outline with a system
    colour, collapsing the state styling above into one flat control. */
 @media(forced-colors:active){
@@ -419,24 +484,27 @@ border-radius:var(--lb-radius-sm)}
 .lb-msg[data-tone=error]::before{content:"✕ "}
 .lb-msg[data-tone=ok]::before{content:"✓ "}
 .lb-btn[data-lb-state=success]{background-color:var(--color-green-background);
-border-color:var(--color-green-foreground);color:var(--color-green-foreground)}
+border-color:var(--color-green-foreground);color:var(--lb-text-green)}
 .lb-btn[data-lb-state=error],.lb-select[data-lb-state=error]{
 background-color:var(--color-red-background);border-color:var(--color-red-foreground);
-color:var(--color-red-foreground)}
+color:var(--lb-text-red)}
 .lb-btn[data-lb-state=unavailable],.lb-btn[disabled]{opacity:.5;cursor:not-allowed}
 .lb-msg{font-size:0.8125rem;line-height:1.45;color:var(--lb-muted)}
+/* Empty, it leaves the flow (no row, no gap), but stays rendered so its
+   role=status still announces; display:none would silence it. */
+.lb-msg:empty{position:absolute}
 /* Screen-reader-only text: control labels, unit suffixes, "opens in a new tab". */
 .lb-vh{position:absolute;width:1px;height:1px;margin:-1px;padding:0;
 overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
-.lb-msg[data-tone=error]{color:var(--color-red-foreground)}
-.lb-msg[data-tone=ok]{color:var(--color-green-foreground)}
+.lb-msg[data-tone=error]{color:var(--lb-text-red)}
+.lb-msg[data-tone=ok]{color:var(--lb-text-green)}
 .lb-chip{display:inline-flex;align-items:center;gap:.25rem;white-space:nowrap;
 font-size:0.75rem;font-weight:600;line-height:1rem;padding:0.125rem 0.5rem;
 border-radius:var(--lb-radius-sm);corner-shape:squircle;
 background-color:var(--lb-chip-bg);color:var(--lb-muted)}
-.lb-chip[data-status=WANTED]{background-color:var(--color-blue-background);color:var(--color-blue-foreground)}
-.lb-chip[data-status=WON]{background-color:var(--color-green-background);color:var(--color-green-foreground)}
-.lb-chip[data-status=LOST]{background-color:var(--color-red-background);color:var(--color-red-foreground)}
+.lb-chip[data-status=WANTED]{background-color:var(--color-blue-background);color:var(--lb-text-blue)}
+.lb-chip[data-status=WON]{background-color:var(--color-green-background);color:var(--lb-text-green)}
+.lb-chip[data-status=LOST]{background-color:var(--color-red-background);color:var(--lb-text-red)}
 .lb-chip[data-status=UNWANTED]{background-color:var(--lb-chip-bg);color:var(--lb-muted)}
 .lb-chip[data-taste=liked]{background-color:var(--color-cherry-background);color:var(--color-red-like)}
 .lb-chip[data-taste=disliked]{background-color:var(--lb-chip-bg);color:var(--lb-muted)}
@@ -457,14 +525,14 @@ background-color:var(--lb-chip-bg);color:var(--lb-muted)}
 .lb-tags-plain>*{display:inline-flex;align-items:center;
 background-color:var(--lb-surface);border:1px solid var(--lb-border);
 color:var(--lb-muted);border-radius:0.375rem;padding:0.125rem 0.375rem;
-font-size:0.75rem;font-weight:500;line-height:1.5;white-space:nowrap}
-.lb-tags-intent>*{display:inline-flex;align-items:center;
+font-size:0.75rem;font-weight:500;line-height:1.5;max-width:100%;white-space:normal;overflow-wrap:anywhere}
+.lb-tags-intent>*{display:inline-flex;align-items:center;max-width:100%;overflow-wrap:anywhere;
 background-color:var(--color-teal-background);border:1px solid var(--color-teal-border);
-color:var(--color-teal-foreground);border-radius:0.375rem;padding:0.1875rem 0.4375rem;
+color:var(--lb-text-teal);border-radius:0.375rem;padding:0.1875rem 0.4375rem;
 font-size:0.75rem;line-height:1.4}
 /* The honest empty state: a blank tag row reads as a rendering bug, so say
    what is missing and what fixes it. */
-.lb-tags-empty{font-size:0.78125rem;line-height:1.45;color:var(--lb-muted);
+.lb-tags-empty{font-size:0.75rem;line-height:1.45;color:var(--lb-muted);
 font-style:italic}
 /* The chips row is empty until a taste or a status lands. Left in flow it is a
    zero-height element that still consumes the gap above the first section, so
@@ -472,6 +540,10 @@ font-style:italic}
    paints the chips, since it is that code which knows. */
 .lb-chips[hidden]{display:none}
 .lb-chip[hidden]{display:none}
+/* .lb-btn sets display:inline-flex, which beats the browser's own [hidden]
+   rule, so a button a board hides with the attribute stayed on screen — the
+   route planner's "All areas" showed with no city picked. */
+.lb-btn[hidden]{display:none}
 .lb-table{width:100%;border-collapse:collapse;font-family:var(--lb-font);color:var(--lb-fg)}
 .lb-table th,.lb-table td{text-align:start;padding:0.5rem 0.4rem;
 border-bottom:1px solid var(--lb-border);vertical-align:middle;font-size:0.8125rem}
@@ -490,8 +562,11 @@ font-variant-numeric:tabular-nums}
 .lb-table th[aria-sort=none]::after{content:" \\2195";opacity:.35}
 /* The row a manager is acting on. */
 .lb-table tbody tr[aria-selected=true]{background-color:var(--lb-chip-bg)}
-.lb-link{color:var(--color-blue-foreground);text-decoration:none}
-.lb-link:hover{text-decoration:underline}
+/* Underlined at rest: next to muted text a link was told apart by hue alone
+   (1.08:1 in luminance). Hover thickens the line. */
+.lb-link{color:var(--lb-text-blue);text-decoration:underline;text-underline-offset:2px;
+text-decoration-thickness:from-font}
+.lb-link:hover{text-decoration-thickness:2px}
 /* Quiet text link out of the artifact. Button-height so it shares the row's
    baseline; understated so it never competes with the actions beside it. The
    arrow is a bare diagonal stroke — an escape-hatch marker, not an icon that

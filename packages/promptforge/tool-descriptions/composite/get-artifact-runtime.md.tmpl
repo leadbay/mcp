@@ -2,8 +2,8 @@
 name: leadbay_get_artifact_runtime
 kind: tool-description
 short_description: |
-  Serves Leadbay's finished boards — a route planner and a lead triage board —
-  to publish as they are, and the headless runtime + usage guide to BUILD any
+  Serves Leadbay's finished boards — a route planner, a lead triage board and
+  the welcome board — to publish as they are, and the headless runtime + usage guide to BUILD any
   other interactive HTML artifact whose controls call Leadbay tools. Use when
   the user wants a clickable artifact. Don't use it to answer a data question.
 routing:
@@ -55,7 +55,7 @@ annotations:
 ---
 Hands you everything to build an interactive HTML **artifact** the user runs inside their own Claude (cowork): headless **domain view-models** + a markdown usage guide. A view-model owns a control's whole data lifecycle — populate a dropdown's options from a Leadbay call, hold the value, expose loading/error, validate, encapsulate the API call + business rules. You own 100% of the markup, layout, and style. The library renders nothing.
 
-**Finished boards come first.** For a lead triage board or a route planner, pass `template: "triage_board"` or `template: "route_planner"` and publish the returned `html` as it is, as a new artifact, with the `capabilities`, `icon` and `description` the result carries. These are the approved boards every user gets — the same page, byte for byte. Do not restyle, rewrite or trim them, and do not rebuild one from the recipe: a re-implementation drifts. The page loads its own data through the Leadbay connector when it opens, and the map outline comes from `leadbay_get_basemap`, so nothing needs attaching. The route planner's ONE permitted edit is the JSON in its `lb-board-config` block: `"city"` (never a country).
+**Finished boards come first.** For a lead triage board or a route planner, pass `template: "triage_board"` or `template: "route_planner"` and publish the returned `html` as it is, as a new artifact, with the `capabilities`, `icon` and `description` the result carries. These are the approved boards every user gets — the same page, byte for byte. Do not restyle, rewrite or trim them, and do not rebuild one from the recipe: a re-implementation drifts. The page loads its own data through the Leadbay connector when it opens, and the map outline comes from `leadbay_get_basemap`, so nothing needs attaching. The route planner's ONE permitted edit is the JSON in its `lb-board-config` block: `"city"` (never a country). The welcome board is `template: "onboarding"`, and `leadbay_welcome` tells you when to publish it.
 
 Without `template`, returns `{ runtime, usage_guide, version }` for building any other board:
 - `runtime` — a minified, zero-dependency vanilla IIFE that self-attaches `window.LeadbayArtifacts` (call it `lb`). Inline once as `<script>`.

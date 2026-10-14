@@ -71,7 +71,9 @@ describe("the skin ships the card's section geometry", () => {
     // the reason the lead is on screen. Every board hand-rolled these before.
     expect(css).toMatch(/\.lb-tags-plain,\.lb-tags-intent\{display:flex;flex-wrap:wrap;gap:0\.5rem\}/);
     expect(css).toMatch(/\.lb-tags-plain>\*\{[^}]*color:var\(--lb-muted\)/);
-    expect(css).toMatch(/\.lb-tags-intent>\*\{[^}]*color:var\(--color-teal-foreground\)/);
+    // Teal text through its role token, which keeps the hue but clears AA as
+    // 12px text (the palette teal measured 3.42:1 on its tint).
+    expect(css).toMatch(/\.lb-tags-intent>\*\{[^}]*color:var\(--lb-text-teal\)/);
     expect(css).toMatch(/\.lb-tags-intent>\*\{[^}]*background-color:var\(--color-teal-background\)/);
   });
 

@@ -28,5 +28,18 @@
       "leadbay_bulk_qualify_leads",
       "leadbay_report_artifact_error"
     ]
+  },
+  "onboarding": {
+    "dir": "onboarding",
+    "title": "Welcome to Leadbay",
+    "icon": "compass",
+    "description": "What Leadbay learned about your business and everything you can ask it to do, each one a click away.",
+    "tools": [
+      "leadbay_welcome",
+      "leadbay_report_artifact_error"
+    ],
+    "capabilities": {
+      "room": {}
+    }
   }
 }

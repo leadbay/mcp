@@ -77,7 +77,7 @@ async function contactLink(lead: Record<string, unknown>): Promise<HTMLAnchorEle
   for (let i = 0; i < 50 && !dom.window.document.querySelector(".lb-card"); i++) {
     await new Promise((r) => setTimeout(r, 10));
   }
-  const line = [...dom.window.document.querySelectorAll(".lb-sub")].find((el) => el.textContent?.includes("👤"));
+  const line = dom.window.document.querySelector(".lb-sub.contact");
   return (line?.querySelector("a") as HTMLAnchorElement | null) ?? null;
 }
 

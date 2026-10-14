@@ -32,3 +32,6 @@ skills-lock.json
 
 # macOS Finder metadata.
 .DS_Store
+
+# Editor workspace settings — per developer, not repo content.
+.vscode/

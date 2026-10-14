@@ -1,0 +1,248 @@
+<title>Welcome to Leadbay</title>
+<style>
+  /* Only what the skin does not ship. Colours are the skin's tokens, so the
+     board follows the host's light / dark theme like the other boards. */
+  /* One type scale, named by use. Headings descend: title > section > card. */
+  :root {
+    --ob-title: 22px; --ob-section: 17px; --ob-card: 15px;
+    --ob-body: 14px; --ob-small: 13px; --ob-caption: 12px;
+    --ob-skeleton: var(--color-gray-4);
+  }
+  :root[data-theme=dark], :root[data-lb-theme=dark] { --ob-skeleton: var(--color-gray-8); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme=light]):not([data-lb-theme=light]) { --ob-skeleton: var(--color-gray-8); } }
+  body { margin: 0; background: var(--lb-page-bg); color: var(--lb-fg); font-family: var(--lb-font); }
+  /* 24px between the page's groups, against 8–16px inside them, so each
+     group reads as one block. */
+  .page { max-width: 1040px; margin: 0 auto; padding: 16px; box-sizing: border-box; display: flex; flex-direction: column; gap: 24px; }
+
+  .hello { display: flex; align-items: center; gap: 14px; }
+  /* The Leadbay mark is black, as in the brand. On a dark host it sits on a
+     white rounded tile, padded, rather than turning white: the mark keeps its
+     colour and the tile keeps it legible. content-box, so the tile grows
+     around the 40×32 mark instead of shrinking it: 10px / 6px padding makes
+     it a 52×52 square with the mark centred. */
+  .hello svg { flex: none; width: 40px; height: 32px; box-sizing: content-box; color: var(--color-black); }
+  :root[data-theme=dark] .hello svg, :root[data-lb-theme=dark] .hello svg {
+    background: var(--color-white); border-radius: 10px; padding: 10px 6px; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme=light]):not([data-lb-theme=light]) .hello svg {
+      background: var(--color-white); border-radius: 10px; padding: 10px 6px; }
+  }
+  .hello h1 { margin: 0; font-size: var(--ob-title); line-height: 1.15; font-weight: 700; letter-spacing: -0.01em; text-wrap: balance; }
+  .hello p { margin: 4px 0 0; font-size: var(--ob-body); line-height: 1.45; color: var(--lb-muted); text-wrap: pretty; max-width: 70ch; }
+  .hello .retry { margin-top: 8px; width: auto; border-radius: 10px; }
+
+  .notice { margin: 0; padding: 10px 12px; border-radius: var(--lb-radius-sm); font-size: var(--ob-small); line-height: 1.45;
+    background: var(--lb-chip-bg); color: var(--lb-fg); }
+
+  h2 { margin: 0 0 6px; font-size: var(--ob-section); line-height: 1.25; font-weight: 700; text-wrap: balance; }
+
+  /* What the AI learned — the web app's welcome card, section for section.
+     .lb-card.learned, not .learned: the skin's .lb-card (a grid) loads after
+     this sheet and would otherwise win. */
+  .lb-card.learned { padding: 16px; display: flex; flex-direction: column; gap: 24px; }
+  .learned[hidden], .learned section[hidden] { display: none; }
+  .learned h2 { font-size: var(--ob-card); }
+
+  /* While the account loads: a skeleton of the learned card (two titles,
+     their lines, a row of tags, two question tiles) in its place, so the
+     space is not blank and the real card lands where the skeleton was. The
+     bars pulse gently; under reduced motion they hold still. Decorative —
+     the subtitle above says it is loading. */
+  .lb-card.skeleton { padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+  .skeleton[hidden] { display: none; }
+  .sk { display: block; border-radius: 6px; background: var(--ob-skeleton); animation: ob-pulse 1.4s ease-in-out infinite; }
+  .sk-title { width: 40%; height: 16px; }
+  .sk-line { width: 70%; height: 12px; }
+  .sk-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+  .sk-row:last-child { margin-bottom: 0; }
+  .sk-pill { width: 110px; height: 22px; border-radius: 6px; }
+  .sk-tile { flex: 1 1 240px; height: 42px; border-radius: 8px; }
+  @keyframes ob-pulse { 50% { opacity: .55; } }
+  @media (prefers-reduced-motion: reduce) { .sk { animation: none; } }
+  .tip { margin: 0 0 10px; font-size: var(--ob-small); line-height: 1.45; color: var(--lb-muted); max-width: 70ch; text-wrap: pretty; }
+  .questions { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+  /* A tinted tile, no border: these are read, not clicked, so they must not
+     look like fields. 8px corners: the card's 24px minus its 16px padding.
+     The number is neutral, not the link blue, because nothing here is a link. */
+  .questions li { flex: 1 1 240px; display: flex; gap: 8px; font-size: var(--ob-small); line-height: 1.45; padding: 10px 12px; border-radius: 8px; background: var(--lb-chip-bg); overflow-wrap: anywhere; }
+  .questions .n { flex: none; font-weight: 700; color: var(--lb-muted); font-variant-numeric: tabular-nums; }
+  .ibp-summary { margin: 0 0 12px; font-size: var(--ob-body); line-height: 1.5; text-wrap: pretty; max-width: 68ch; overflow-wrap: anywhere; }
+  /* Two columns while each keeps ~220px, one below: the content decides. */
+  .ibp-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+  .ibp-cols h3 { margin: 0 0 6px; font-size: var(--ob-body); line-height: 1.3; font-weight: 600; }
+  .ibp-cols ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: var(--ob-small); line-height: 1.45; }
+  .ibp-cols li { display: flex; gap: 6px; overflow-wrap: anywhere; }
+  .ibp-cols li::before { flex: none; font-weight: 700; }
+  .yes li::before { content: "✓"; content: "✓" / ""; color: var(--lb-text-green); }
+  .no li::before { content: "✕"; content: "✕" / ""; color: var(--lb-text-red); }
+  /* Set apart by space alone, no rule above it. */
+  .learned-foot { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: var(--ob-small); line-height: 1.45; color: var(--lb-muted); }
+  .learned-foot > span { text-wrap: pretty; }
+
+  /* What you can ask — one card per thing Leadbay does in the chat. */
+  .chat-hint { margin: 0 0 12px; font-size: var(--ob-body); line-height: 1.45; color: var(--lb-fg); max-width: 70ch; text-wrap: pretty; }
+  .chat-hint[hidden] { display: none; }
+  /* 1, 2 or 4 columns: counts that divide the eight cards, so a mid-width
+     chat panel never gets 3 / 3 / 2 with an empty cell. */
+  .asks { display: grid; grid-template-columns: 1fr; gap: 12px; }
+  @media (min-width: 520px) { .asks { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (min-width: 988px) { .asks { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+  /* .lb-card.ask: a column, so the description takes the slack and every
+     card's phrase and button line up along the row's bottom edge. */
+  .lb-card.ask { padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+  .ask h3 { margin: 0; font-size: var(--ob-card); line-height: 1.3; font-weight: 600; display: flex; align-items: center; gap: 10px; text-wrap: balance; }
+  /* Neutral, not the link blue: the title is not clickable. */
+  .ask h3 svg { flex: none; width: 18px; height: 18px; color: var(--lb-fg); }
+  /* The colour accent: the icon on a tinted 32px tile, one hue per pair of
+     related jobs (app.js ASKS). The tile mixes 14% of the icon's colour into
+     the card, so it shows in both themes; the icon takes the text-safe
+     variant of its hue, 3:1 or more on its tile. 8px corners, inside the
+     card's corner (24px − 14px padding = 10px). Centred on the title, which reads right
+     whether the title takes one line or two. */
+  .ask .ico { flex: none; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 10px;
+    background: color-mix(in oklch, var(--ico) 14%, var(--lb-surface)); }
+  .ask .ico > svg { color: var(--ico); }
+  .ask .ico[data-hue="purple"] { --ico: var(--color-purple-foreground); }
+  .ask .ico[data-hue="teal"] { --ico: var(--lb-text-teal); }
+  .ask .ico[data-hue="green"] { --ico: var(--lb-text-green); }
+  .ask .ico[data-hue="cherry"] { --ico: var(--color-cherry-foreground); }
+  .ask p { margin: 0; font-size: var(--ob-small); line-height: 1.45; color: var(--lb-muted); flex: 1; text-wrap: pretty; }
+  /* The phrase is set apart by its curly quotes and weight, not a faux
+     italic the product face does not ship. */
+  .ask .say { margin: 4px 0 0; flex: none; font-size: var(--ob-small); font-weight: 500; line-height: 1.4; color: var(--lb-fg); user-select: all; text-wrap: pretty; }
+  /* The button and its status line travel together. The status line stays
+     rendered while empty (no display:none), or screen readers drop it and
+     never announce "Copied". It takes space only once it has text. */
+  .ask-act { display: flex; flex-direction: column; align-items: flex-start;
+    /* the button, the 6px gap and one 13px status line, reserved so a
+       status landing does not push the row and everything under it */
+    min-height: calc(2.125rem + 6px + 1.45 * var(--ob-small)); }
+  .ask-act .lb-msg:not(:empty) { margin-top: 6px; }
+  /* 10px corners: the card's 24px minus its 14px padding. */
+  .ask .lb-btn { width: auto; white-space: nowrap; border-radius: 10px; }
+  /* Labels say "Copy" or "Ask" depending on the host, known only once the
+     page has met it: hold the buttons' place until then, so a label never
+     flips under the cursor. */
+  /* opacity 0 too, so the label fades in through the skin's own .lb-btn
+     opacity transition rather than popping. */
+  .asks:not([data-ready]) .lb-btn { visibility: hidden; opacity: 0; }
+  /* …and a skeleton bar holds the button's spot meanwhile, in the same grey
+     and pulse as the learned card's skeleton, so the card is not missing a
+     piece; the real button fades in where it stood. */
+  .ask-act { position: relative; }
+  .asks:not([data-ready]) .ask-act::before { content: ""; position: absolute; inset-block-start: 0; inset-inline-start: 0;
+    width: 132px; height: 2.125rem; border-radius: 10px; background: var(--ob-skeleton); animation: ob-pulse 1.4s ease-in-out infinite; }
+  @media (prefers-reduced-motion: reduce) { .asks:not([data-ready]) .ask-act::before { animation: none; } }
+
+  /* .lb-card.foot, not .foot: the skin's .lb-card is a grid and is injected
+     after this sheet, so a lone .foot loses and the button stretches to the
+     card's full width. The button fits its label, and may wrap: the French
+     label only just fits a 320px screen on one line. */
+  .lb-card.foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 14px 16px; }
+  .foot strong { font-size: var(--ob-body); line-height: 1.3; text-wrap: balance; }
+  .foot .lb-btn { display: inline-flex; flex: 0 1 auto; width: auto; max-width: 100%; align-items: flex-start; line-height: 1.3; gap: 6px; text-decoration: none; white-space: normal; text-wrap: balance; text-align: start; border-radius: 10px; }
+  .foot .lb-btn > svg { width: 16px; height: 16px; margin-top: 1px; }
+
+  @media (max-width: 520px) { :root { --ob-title: 20px; --ob-section: 16px; } }
+
+  /* Entrance, in reading order: a title, then what it heads, then the next
+     title. --d is each piece's place in the queue, --enter-step apart. Only elements
+     the script never rebuilds take part, so a re-render does not replay it
+     (app.js builds the ask cards once and only relabels them). The learned card is hidden until its data arrives; its pieces
+     play when it is first shown. Opacity and transform only: a height change
+     would make the MCP App's iframe jump as it measures itself. `both` plus a
+     short total keeps an early thumbnail from catching a blank page, and the
+     content ends visible either way. */
+  /* The entrance's timing, shared with the triage board and the route
+     planner: 280ms per piece, 50ms apart, on the iOS drawer curve. A page
+     entrance plays once and answers no click, so it settles softly rather
+     than snapping like a button press (the skin's 0.23, 1, 0.32, 1). Under
+     reduced motion the pieces still fade in turn, without moving. */
+  :root { --enter-dur: 280ms; --enter-ease: cubic-bezier(0.32, 0.72, 0, 1); --enter-step: 50ms; }
+  @keyframes ob-enter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  @keyframes ob-fade { from { opacity: 0; } to { opacity: 1; } }
+  .hello svg, .hello h1, .hello p, .notice, .lb-card.learned, .lb-card.skeleton,
+  .learned h2, .learned .tip, #tags, #questions, .ibp-summary, .ibp-cols, .learned-foot,
+  .start h2, .chat-hint, .lb-card.ask, .lb-card.foot {
+    animation: ob-enter var(--enter-dur) var(--enter-ease) both;
+    animation-delay: calc(var(--d, 0) * var(--enter-step));
+  }
+  .hello h1 { --d: 1; } .hello p { --d: 2; } .notice { --d: 3; }
+  .lb-card.learned, .lb-card.skeleton { --d: 3; }
+  #sec-tags h2 { --d: 4; } #sec-tags .tip { --d: 5; } #tags { --d: 6; }
+  #sec-questions h2 { --d: 7; } #sec-questions .tip { --d: 8; } #questions { --d: 9; }
+  #sec-ibp h2 { --d: 10; } #sec-ibp .tip { --d: 11; } .ibp-summary { --d: 12; } .ibp-cols { --d: 13; }
+  .learned-foot { --d: 14; }
+  .start h2 { --d: 15; } .chat-hint { --d: 16; } .lb-card.foot { --d: 21; }
+  /* The ask cards, 35ms apart after the hint (--i is set by app.js); the
+     footer follows the last of the eight. */
+  .lb-card.ask { animation-delay: calc(16 * var(--enter-step) + var(--i, 0) * 35ms); }
+  @media (prefers-reduced-motion: reduce) {
+    .hello svg, .hello h1, .hello p, .notice, .lb-card.learned, .lb-card.skeleton,
+    .learned h2, .learned .tip, #tags, #questions, .ibp-summary, .ibp-cols, .learned-foot,
+    .start h2, .chat-hint, .lb-card.ask, .lb-card.foot { animation-name: ob-fade; animation-timing-function: ease; }
+  }
+</style>
+<main class="page">
+  <header class="hello">
+    <!-- The Leadbay mark, as the web app's welcome dialog shows it. -->
+    <svg viewBox="0 0 30 24" role="img" aria-label="Leadbay"><path fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M0.292232 7.07181L6.0927 0.429771C6.3306 0.157361 6.68203 0 7.05249 0H9.95544C10.471 0 10.9338 0.303122 11.1215 0.763672L12.2796 3.60524H15.7393C15.9245 3.60524 16.1002 3.52657 16.2191 3.39037L18.9923 0.214874C19.1112 0.0786917 19.2869 0 19.4722 0H22.6512C23.1668 0 23.6296 0.303122 23.8173 0.763672L29.9141 15.7234C30.0806 16.1321 30.0015 16.5954 29.7078 16.9317L23.9104 23.5702C23.6725 23.8426 23.3211 24 22.9506 24H7.34734C6.83178 24 6.36895 23.6969 6.18125 23.2363L0.0859325 8.28012C-0.0806087 7.87146 -0.00150858 7.40818 0.292232 7.07181ZM18.8534 9.38709L19.956 12.0926H24.187L24.7383 13.4453H12.0452L13.1479 16.1508H28.6616L25.9051 9.38709H18.8534ZM15.725 12.0926H18.5457L15.6054 4.87795H12.7847L15.725 12.0926ZM11.4939 12.0926H14.3146L9.90422 1.27065H7.08353L11.4939 12.0926ZM22.5973 1.27065H19.7766L22.5305 8.02791H25.3512L22.5973 1.27065ZM19.8364 4.87795H17.0157L18.2995 8.02791H21.1202L19.8364 4.87795Z"/></svg>
+    <div>
+      <h1 id="title" data-i18n="welcome">Welcome to Leadbay!</h1>
+      <p id="subtitle" role="status" data-i18n="subtitleLoading">Loading what Leadbay knows about your business…</p>
+      <button class="lb-btn retry" id="retry" type="button" hidden data-i18n="retry">Try again</button>
+    </div>
+  </header>
+
+  <div class="lb-card skeleton" id="learned-loading" aria-hidden="true">
+    <span class="sk sk-title"></span><span class="sk sk-line"></span>
+    <span class="sk-row"><span class="sk sk-pill"></span><span class="sk sk-pill"></span><span class="sk sk-pill"></span></span>
+    <span class="sk sk-title"></span><span class="sk sk-line"></span>
+    <span class="sk-row"><span class="sk sk-tile"></span><span class="sk sk-tile"></span><span class="sk sk-tile"></span></span>
+  </div>
+
+  <p class="notice" id="computing" hidden data-i18n="computing">Leadbay is still learning about your business. Your first leads are being scored; ask for today's leads in a few minutes.</p>
+
+  <div class="lb-card learned" id="learned" hidden>
+    <section id="sec-tags">
+      <h2 data-i18n="tagsLabel">Intent signals</h2>
+      <p class="tip" data-i18n="tagsTip">Topics your ideal buyers are actively researching and signaling intent around.</p>
+      <!-- The triage card's intent-tag style (teal), so a signal looks the
+           same here as on the lead it was found on. -->
+      <div class="lb-tags-intent" id="tags"></div>
+    </section>
+    <section id="sec-questions">
+      <h2 data-i18n="qqLabel">Qualification questions</h2>
+      <p class="tip" data-i18n="qqTip">Questions to quickly assess whether a prospect matches your ideal profile during outreach.</p>
+      <ol class="questions" id="questions" role="list"></ol>
+    </section>
+    <section id="sec-ibp">
+      <h2 data-i18n="ibpLabel">Ideal buyer profile</h2>
+      <p class="tip" data-i18n="ibpTip">AI-learned profile of your ideal customer.</p>
+      <p class="ibp-summary" id="ibp-summary"></p>
+      <div class="ibp-cols">
+        <div id="ibp-yes-col"><h3 data-i18n="signals">Strong signals</h3><ul class="yes" id="ibp-yes" role="list"></ul></div>
+        <div id="ibp-no-col"><h3 data-i18n="disqualifiers">Disqualifiers</h3><ul class="no" id="ibp-no" role="list"></ul></div>
+      </div>
+    </section>
+    <div class="learned-foot">
+      <span data-i18n="editAnytime">All of this lives in your taste profile, in the Leadbay web app.</span>
+      <!-- The arrow is decoration; the new tab is said in words, for screen readers. -->
+      <a class="lb-link" href="https://leadbay.app/app/taste-profile" target="_blank" rel="noopener"><span data-i18n="editTaste">Edit your taste profile</span><span aria-hidden="true"> ↗</span><span class="lb-vh" data-i18n="newTab"> (opens in a new tab)</span></a>
+    </div>
+  </div>
+
+  <section class="start">
+    <h2 data-i18n="asksLabel">What you can ask Leadbay</h2>
+    <!-- Only where the buttons cannot post into the chat (a Claude artifact):
+         the one-click start is the assistant's suggestions under the board. -->
+    <p class="chat-hint" id="chat-hint" hidden data-i18n="chatHint">To start right away, pick one of the suggestions in the chat. Or copy any phrase below and paste it.</p>
+    <div class="asks" id="asks"></div>
+  </section>
+
+  <footer class="lb-card foot">
+    <strong data-i18n="ctaLabel">Want to get the most out of Leadbay?</strong>
+    <a class="lb-btn lb-btn-submit" id="live" href="https://luma.com/workshopleadbay" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg><span data-i18n="live">Sign up for a live onboarding session</span><span class="lb-vh" data-i18n="newTab"> (opens in a new tab)</span></a>
+  </footer>
+</main>

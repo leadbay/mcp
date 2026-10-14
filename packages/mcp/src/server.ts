@@ -163,11 +163,24 @@ function buildScoringParagraph(has: (name: string) => boolean): string {
 // not make the agent CHOOSE it: on a live "Walk me through Leadbay" the agent
 // improvised its own overview instead. This line is the binding — it names the
 // phrasings and says invoke the prompt rather than writing your own tour.
+//
+// It has two entry points. The welcome board (leadbay_welcome) answers "what
+// can it do" and opens on its own for a new account (account_status
+// `first_run`); the tour answers "show me".
+// Nothing can open the board right after the OAuth login, because the server
+// only speaks when the assistant calls it. The user's first message is the
+// earliest moment, so a greeting with no task counts too.
 const FIRST_RUN_ROUTING =
-  "FIRST RUN — when the user asks to be SHOWN how Leadbay works (\"walk me through Leadbay\", " +
-  "\"I'm new\", \"how do I use this\", \"getting started\", \"give me a tour\", \"I just installed this\"), " +
+  "FIRST RUN — two entry points.\n" +
+  "WELCOME: when the user is new or asks what is possible (\"I'm new\", \"what can Leadbay do\", " +
+  "\"I just connected Leadbay\", \"I just installed this\", or a first message that is only a greeting), " +
+  "or `leadbay_account_status` returns `first_run: true` and they asked for nothing specific, call " +
+  "`leadbay_welcome` and follow its description — on Claude it publishes the welcome board. When a " +
+  "`first_run` user DID ask for something, answer that first, then offer the welcome board once as a next step.\n" +
+  "TOUR: when the user asks to be SHOWN how Leadbay works step by step (\"walk me through Leadbay\", " +
+  "\"how do I use this\", \"getting started\", \"give me a tour\"), " +
   "invoke the `leadbay_getting_started` prompt via `prompts/get` and follow it. Do NOT improvise your " +
-  "own overview, tour, or summary of the product — it ships a five-gate walkthrough where each gate is " +
+  "own overview, tour, or summary of the product — it ships a four-gate walkthrough where each gate is " +
   "a single-option choice widget the user clicks, so they learn by doing. Writing your own prose tour " +
   "instead replaces the thing they asked for with a lecture.";
 

@@ -390,7 +390,15 @@ export async function startLoopbackListener(opts: {
     }
     res.statusCode = 200;
     res.setHeader("Content-Type", "text/html; charset=utf-8");
-    res.end(renderHtml("You're signed in", "You can close this tab and return to the terminal."));
+    // The first thing the user types decides what they see first: this phrase
+    // routes to leadbay_welcome, the welcome board. Nothing else can show it —
+    // the server only speaks when the assistant calls it.
+    res.end(
+      renderHtml(
+        "You're signed in to Leadbay",
+        "Close this tab, go back to your assistant and ask: “What can Leadbay do for me?”",
+      ),
+    );
     resolveCallback({ code, state });
   });
 

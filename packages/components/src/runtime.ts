@@ -168,6 +168,112 @@ export function i18n<K extends string>(dict: { en: Record<K, string>; fr?: Parti
   };
 }
 
+// ─── Handing a request to the chat ───────────────────────────────────────────
+//
+// Two surfaces can take a board's "try this" into the conversation:
+//
+// - An MCP Apps host (ChatGPT …) takes `ui/message`: the phrase lands as the
+//   viewer's own message (mcp-app-bridge.ts).
+// - A published claude.ai artifact that declares the `room` capability gets
+//   `room.sendToClaudeSession()`: from the viewer's click, the page hands
+//   `{label, request}` to THEIR Claude conversation beside it. With
+//   `deliver: "send"` Claude's own dialog asks them to send it and their Send
+//   starts the turn; with "stage" it waits in their composer. Claude reads it
+//   as data from the page, so the tool description that opened the board
+//   says how to read `request`. There is no way for a page to start a turn by
+//   itself — the viewer's click and confirmation do.
+//
+// cowork has neither, so `sendToChat` resolves false there and the board
+// offers the phrase to copy.
+
+interface ClaudeRoom {
+  canSendToClaudeSession(): Promise<string>;
+  sendToClaudeSession(
+    data: Record<string, unknown>,
+    options?: { deliver?: "stage" | "send" },
+  ): Promise<{ to?: string }>;
+}
+let claudeRoom: ClaudeRoom | null = null;
+let claudeSendState = "off";
+let chatReady: Promise<void> | null = null;
+// A host that never answers `use()` resolves it null after 10 s; the board
+// holds its buttons until this settles, so do not wait that long.
+const CHAT_READY_TIMEOUT_MS = 4_000;
+// The answers that mean a send can go through (room.d.ts
+// CanSendToClaudeSession); "available_if_opened" takes a staged send only.
+const CLAUDE_SENDABLE = new Set(["available", "available_if_summoned", "available_if_opened"]);
+
+/** Find out, once, whether this page can hand a request to the chat. Resolves
+ *  when `canSendToChat()` is settled (on claude.ai: the `room` capability
+ *  answered; elsewhere at once). Never rejects. */
+export function chatSendReady(): Promise<void> {
+  if (!chatReady) {
+    chatReady = (async () => {
+      const claude = (globalThis as { claude?: { use?: (n: string) => Promise<unknown> } }).claude;
+      if (!claude || typeof claude.use !== "function") return;
+      try {
+        const room = (await Promise.race([
+          Promise.resolve(claude.use("room")).catch(() => null),
+          new Promise((resolve) => setTimeout(() => resolve(null), CHAT_READY_TIMEOUT_MS)),
+        ])) as ClaudeRoom | null;
+        if (!room || typeof room.sendToClaudeSession !== "function") return;
+        claudeSendState = String(await room.canSendToClaudeSession());
+        claudeRoom = room;
+      } catch {
+        // An older platform rejects canSendToClaudeSession: no send here.
+        claudeRoom = null;
+      }
+    })();
+  }
+  return chatReady;
+}
+
+/** How a `sendToChat` went: "sent" — it is on its way into the conversation
+ *  (on Claude, the viewer confirms it in Claude's dialog); "staged" — it is
+ *  waiting in the viewer's composer for their Enter; false — nothing reached
+ *  the chat, offer the phrase to copy. */
+export type ChatSend = "sent" | "staged" | false;
+
+/** Put a request in the chat so the assistant acts on it — a board's "try
+ *  this" button. CALL IT STRAIGHT FROM THE CLICK, with nothing awaited
+ *  before it: claude.ai only accepts a send it can tie to the viewer's
+ *  gesture. `label` names what was picked ("See today's leads"). Never
+ *  throws. */
+export async function sendToChat(text: string, opts: { label?: string } = {}): Promise<ChatSend> {
+  if (claudeRoom && CLAUDE_SENDABLE.has(claudeSendState)) {
+    const deliver = claudeSendState === "available_if_opened" ? "stage" : "send";
+    const data: Record<string, unknown> = { from: "leadbay_welcome_board", request: text };
+    if (opts.label) data.label = opts.label.slice(0, 120);
+    let sending: Promise<unknown>;
+    try {
+      // Synchronous from the click: no await before this line.
+      sending = claudeRoom.sendToClaudeSession(data, { deliver });
+    } catch {
+      return false;
+    }
+    try {
+      await sending;
+      return deliver === "send" ? "sent" : "staged";
+    } catch {
+      return false;
+    }
+  }
+  const t = mcpAppTransport();
+  if (!t) return false;
+  try {
+    return (await t.sendMessage(text)) ? "sent" : false;
+  } catch {
+    return false;
+  }
+}
+
+/** Whether `sendToChat` can work here. Settled once `chatSendReady()` and
+ *  `lb.openingResult()` have resolved; false on cowork. */
+export function canSendToChat(): boolean {
+  if (claudeRoom && CLAUDE_SENDABLE.has(claudeSendState)) return true;
+  return mcpAppCall ? mcpAppCall.canSendMessage() : false;
+}
+
 let mcpPromise: Promise<unknown> | null = null;
 function mcpNamespace(use: (n: string) => Promise<unknown>): Promise<unknown> {
   if (!mcpPromise) mcpPromise = Promise.resolve(use("mcp")).catch(() => null);
@@ -1033,6 +1139,7 @@ export function bindAction(el: HTMLElement, action: Action): () => void {
   // artifact — still claiming "saved" after the rep has changed the value to
   // something that was never written.
   let settle: ReturnType<typeof setTimeout> | undefined;
+  let refocus = false;
   const unsub = action.subscribe(() => {
     const state = action.error?.unavailable
       ? "unavailable"
@@ -1044,7 +1151,14 @@ export function bindAction(el: HTMLElement, action: Action): () => void {
             ? "success"
             : "ready";
     el.setAttribute("data-lb-state", state);
+    // Disabling a focused button drops its focus to the page; note it, and
+    // give it back when the write settles, so a keyboard user stays put.
+    if (action.loading && typeof document !== "undefined" && document.activeElement === el) refocus = true;
     if ("disabled" in el) (el as unknown as { disabled: boolean }).disabled = action.loading;
+    if (!action.loading && refocus) {
+      refocus = false;
+      (el as HTMLElement).focus({ preventScroll: true });
+    }
     // aria-busy is the assistive-tech equivalent of the loading style; without
     // it an in-flight write is silent to a screen reader.
     el.setAttribute("aria-busy", String(action.loading));
@@ -1212,6 +1326,12 @@ function setStatus(opts: SetStatusOpts): Action {
       if (!Array.isArray(failed) || failed.length === 0) return null;
       const total = ids().length;
       const first = failed[0]?.message ?? "write rejected";
+      // Labelled in the viewer's language, like the page around it.
+      if (locale() === "fr") {
+        return failed.length === total
+          ? `Statut non appliqué : ${first}. Réessayez.`
+          : `${failed.length} leads sur ${total} en échec : ${first}. Réessayez pour ceux-là.`;
+      }
       return failed.length === total
         ? `Status not applied: ${first}`
         : `${failed.length} of ${total} leads failed: ${first}`;
@@ -1357,12 +1477,22 @@ function qualify(opts: QualifyOpts): Action {
         // `failed[]` entries carry `error`, not `message` — set_lead_status
         // uses the other key, and reading the wrong one prints "undefined".
         const first = failed[0]?.error ?? "launch rejected";
+        if (locale() === "fr") {
+          return failed.length >= total
+            ? `La qualification n'a pas démarré : ${first}. Réessayez.`
+            : `${failed.length} leads sur ${total} n'ont pas démarré : ${first}. Réessayez pour ceux-là.`;
+        }
         return failed.length >= total
           ? `Qualification did not start: ${first}`
           : `${failed.length} of ${total} leads did not start: ${first}`;
       }
       if (res.quota_exceeded) {
         const ok = res.launched_count ?? 0;
+        if (locale() === "fr") {
+          return ok > 0
+            ? `Quota atteint — ${ok} sur ${total} lancés, les autres n'ont pas démarré. Réessayez après la remise à zéro du quota.`
+            : "Quota atteint — aucun lead mis en file. Réessayez après la remise à zéro du quota.";
+        }
         return ok > 0
           ? `Quota reached — ${ok} of ${total} launched, the rest were not started.`
           : "Quota reached — no leads were queued.";
@@ -2995,6 +3125,14 @@ export const lb = {
   // Apps, else the browser's. `i18n({en, fr})` → `t(key, vars)`.
   locale,
   i18n,
+  // A board's "try this" button: the request goes into the chat on an MCP
+  // Apps host (ui/message) and on a claude.ai artifact that declares `room`
+  // (sendToClaudeSession, confirmed by the viewer); elsewhere `sendToChat`
+  // resolves false and the page offers a copy. Await `chatSendReady()` once
+  // before labelling the buttons.
+  sendToChat,
+  canSendToChat,
+  chatSendReady,
   // telemetry (product#4081) — `report` is exposed so an artifact can report a
   // failure the library cannot see (a render that threw, a control the agent
   // wired by hand). `setTelemetry(false)` opts this page out; the ACCOUNT-level
