@@ -11,7 +11,7 @@ interface EnrichContactsParams {
   phone?: boolean;
 }
 
-export const ENRICH_QUOTA_HINT =
+const ENRICH_QUOTA_HINT =
   "The enrichment quota is shared by every contact on the account, so each other leadbay_enrich_contacts call fails the same way until the window resets. " +
   "Stop the batch now: do not call this tool for the next contacts, and do not retry this one in a loop. " +
   "Tell the user which contacts you enriched before the limit and which ones remain. ";
@@ -86,24 +86,15 @@ export const enrichContacts: Tool<EnrichContactsParams> = {
     // Try paid contact enrichment path first
     const enrichPath = `/leads/${params.leadId}/enrich/contacts/${params.contactId}/enrich?email=${email}&phone=${phone}`;
     try {
-      try {
-        await client.requestVoid("POST", enrichPath);
-      } catch (e: any) {
-        if (e?.code === "NOT_FOUND") {
-          // Fall back to org contact enrichment path
-          const orgPath = `/leads/${params.leadId}/contacts/${params.contactId}/enrich?email=${email}&phone=${phone}`;
-          await client.requestVoid("POST", orgPath);
-        } else {
-          throw e;
-        }
-      }
+      await client.requestVoid("POST", enrichPath).catch((e: any) => {
+        if (e?.code !== "NOT_FOUND") throw e;
+        // Fall back to org contact enrichment path
+        const orgPath = `/leads/${params.leadId}/contacts/${params.contactId}/enrich?email=${email}&phone=${phone}`;
+        return client.requestVoid("POST", orgPath);
+      });
     } catch (e: any) {
-      // The quota is per account, not per contact. With only the generic
-      // "wait, then retry" hint, an agent enriching a list moved on to the next
-      // contact after a 429 and spent its batch on failed calls.
-      if (e?.code === "QUOTA_EXCEEDED") {
-        throw { ...e, hint: ENRICH_QUOTA_HINT + e.hint };
-      }
+      // The quota is per account, so the next contact in a batch fails too.
+      if (e?.code === "QUOTA_EXCEEDED") throw { ...e, hint: ENRICH_QUOTA_HINT + e.hint };
       throw e;
     }
 

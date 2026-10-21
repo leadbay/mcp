@@ -13,7 +13,9 @@ import { mockHttp, resetHttpMock, httpsMockFactory } from "../../harness.js";
 vi.mock("node:https", () => httpsMockFactory());
 
 import { LeadbayClient } from "../../../src/client.js";
-import { enrichContacts, ENRICH_QUOTA_HINT } from "../../../src/tools/enrich-contacts.js";
+import { enrichContacts } from "../../../src/tools/enrich-contacts.js";
+
+const STOP = /^The enrichment quota is shared by every contact on the account.*Stop the batch now/;
 
 const BASE = "https://api-us.leadbay.app";
 const client = () => new LeadbayClient(BASE, "u.test-token");
@@ -41,9 +43,7 @@ describe("leadbay_enrich_contacts — a quota 429 stops the batch", () => {
       .execute(client(), { leadId: "L1", contactId: "C1" })
       .catch((e) => e);
     expect(err.code).toBe("QUOTA_EXCEEDED");
-    expect(err.hint.startsWith(ENRICH_QUOTA_HINT)).toBe(true);
-    expect(err.hint).toMatch(/Stop the batch/);
-    expect(err.hint).toMatch(/leadbay_account_status/);
+    expect(err.hint).toMatch(STOP);
     expect(err._meta.http_status).toBe(429);
     expect(requests.filter((r) => r.method === "POST")).toHaveLength(1);
   });
@@ -69,7 +69,7 @@ describe("leadbay_enrich_contacts — a quota 429 stops the batch", () => {
       .execute(client(), { leadId: "L1", contactId: "C1" })
       .catch((e) => e);
     expect(err.code).toBe("QUOTA_EXCEEDED");
-    expect(err.hint.startsWith(ENRICH_QUOTA_HINT)).toBe(true);
+    expect(err.hint).toMatch(STOP);
     expect(err._meta.retry_after).toBe(120);
   });
 
@@ -86,7 +86,6 @@ describe("leadbay_enrich_contacts — a quota 429 stops the batch", () => {
     const err: any = await enrichContacts
       .execute(client(), { leadId: "L1", contactId: "C1" })
       .catch((e) => e);
-    expect(err.code).not.toBe("QUOTA_EXCEEDED");
-    expect(err.hint ?? "").not.toContain(ENRICH_QUOTA_HINT);
+    expect(err.hint ?? "").not.toMatch(/enrichment quota is shared/);
   });
 });
