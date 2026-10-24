@@ -98,6 +98,7 @@
             }
           ]
         },
+        "demo_recording_url": "https://github.com/leadbay/mcp/releases/tag/chatgpt-demo-2026-10-24",
         "commerce": false,
         "commerce_description": "Leadbay sells nothing inside ChatGPT and processes no payments. Ordering contact details draws on the quota of the user's existing Leadbay plan, bought outside ChatGPT."
       },
