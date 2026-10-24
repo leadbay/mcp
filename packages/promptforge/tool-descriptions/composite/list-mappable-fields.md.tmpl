@@ -23,6 +23,7 @@ Optional `for_records` param: pass a sample of CSV-shaped rows and the tool also
 
 ---
 
+{{claude}}
 ## RENDERING
 
 When called mid-import (internal use), do NOT render — return the data only.
@@ -38,9 +39,11 @@ Bullet each, grouped by domain (lead identity → location → sector → contac
 Bullet each as `<name> · <type> · ` `` `<mapping_value>` `` (mapping_value in backticks — agents need it verbatim for import calls).
 
 When called with `for_records`, append a final section **"Mapping hints for your file"** with the per-column suggestions; flag low-confidence mappings explicitly.
+{{/claude}}
 
 ---
 
+{{claude}}
 ## NEXT STEPS
 
 | Observation                                | Suggest                                                     | Calls                                                  |
@@ -48,3 +51,4 @@ When called with `for_records`, append a final section **"Mapping hints for your
 | User is preparing an import                | "Map a file"                                                | leadbay_resolve_import_rows / leadbay_import_leads     |
 | User needs a custom field that doesn't exist | "Create a new custom field"                               | leadbay_create_custom_field                            |
 | for_records was passed; hints look good    | "Run the import with these mappings"                        | leadbay_import_leads(records, mappings)                |
+{{/claude}}

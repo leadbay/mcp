@@ -343,6 +343,19 @@ needs headroom in the default too. `packages/mcp/test/unit/mcp-apps-description.
 asserts the Claude description carries no apps prose and the apps variant only
 adds to it.
 
+### `{{claude}}` — rendering prose ChatGPT does not get
+
+Nobody writes this marker by hand. Every include of a `rendering/`,
+`next-steps/` or `linking/` snippet, or of `gates/builtin-widgets`, is wrapped in it at
+include time, and so is the auto-emitted `## RENDER (quick)` block. A `## RENDER…`
+or `## NEXT STEPS` section written inline in a template is wrapped by hand.
+`/chatgpt/mcp` (`APPS_NO_COMMERCE_TOOL_DESCRIPTIONS`) deletes the blocks; every
+other surface keeps them byte-for-byte. Reason: ChatGPT's own tool-call check
+rated them "danger HIGH" for prescribing "mandatory rendering and next-step
+widget instructions" (2026-10-24). A new inline rendering section in a template
+needs its own `{{claude}}` pair; `chatgpt-no-claude-rendering.test.ts` fails
+without it.
+
 Include them via `{{include:rendering/score-bar}}` etc. Don't duplicate
 content across templates — extract a snippet if you find yourself
 copy-pasting.

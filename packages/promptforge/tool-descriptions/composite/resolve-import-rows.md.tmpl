@@ -19,6 +19,7 @@ Resolve messy CSV-shaped lead rows against Leadbay before file import. The tool 
 
 ---
 
+{{claude}}
 ## RENDERING
 
 Present as a markdown table of resolution outcomes per row.
@@ -37,9 +38,11 @@ Status emoji map:
 For ambiguous rows, list up to 3 candidate names + leadIds inline. Truncate the source row to a short identifier (first non-empty column or domain).
 
 Below the table, a one-liner: `"Ready: K rows · Ambiguous: A rows · Unmatched: U rows"`
+{{/claude}}
 
 ---
 
+{{claude}}
 ## NEXT STEPS
 
 | Observation                            | Suggest                                                     | Calls                                                  |
@@ -48,3 +51,4 @@ Below the table, a one-liner: `"Ready: K rows · Ambiguous: A rows · Unmatched:
 | Ambiguous rows present                 | "Inspect candidates for each ambiguous row"                 | (re-call with include_candidate_profiles=true)         |
 | Unmatched rows but websites present    | "Import anyway — Leadbay crawls & adds them to your account later" | leadbay_import_leads (the late-added leads populate in Leadbay; re-run the import to pull them back through the MCP) |
 | User wants to skip rows they can't ID  | "Drop unmatched rows and import the rest"                   | leadbay_import_leads (with filtered records)           |
+{{/claude}}

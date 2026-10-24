@@ -24,6 +24,8 @@ Delete an org-level CRM custom field. Use when the user explicitly wants to remo
 
 {{include:headers/tool-when-not-to-use}} to rename or retype a field (use leadbay_update_custom_field) or to create one (use leadbay_create_custom_field).
 
+{{claude}}
 ### RENDERING
 
 Before deleting (no confirm), render the `hint` and ask the user to confirm — do NOT auto-confirm on the user's behalf. After a confirmed delete, acknowledge in one line: **"Deleted custom field #12 'Legacy Source'."**
+{{/claude}}
