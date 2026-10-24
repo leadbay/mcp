@@ -1,6 +1,6 @@
 # Changelog — @leadbay/mcp
 
-## 0.46.1 — 2026-10-24 — ChatGPT records a summary of the request, not the user's words
+## 0.46.1 — 2026-10-24 — ChatGPT gets a summary of the request and no Claude layout instructions
 
 - **On ChatGPT, Leadbay no longer asks for the user's own words.** Each call
   there carries one sentence saying what the user wants, in the third person,
@@ -8,6 +8,12 @@
   OpenAI's review scan flagged the verbatim copy on 39 tools as asking for
   more than the tool needs. Claude and every other assistant keep sending
   the user's words, as before.
+- **On ChatGPT, tool descriptions leave out the layout instructions written
+  for Claude.** The rendering recipes, the NEXT STEPS tables and the widget
+  table are deleted from the ChatGPT descriptions, which are now about 40%
+  shorter. ChatGPT's own check flagged them on every Leadbay call that asks
+  for approval. Claude and every other assistant read exactly what they read
+  before.
 - **The ChatGPT submission is a plugin now.** `chatgpt-plugin/` holds what is
   uploaded to OpenAI: the listing, the review test cases, the logos and the
   connector URL. It replaces `chatgpt-app-submission.json`.

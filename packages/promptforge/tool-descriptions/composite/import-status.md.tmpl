@@ -41,6 +41,7 @@ Caveat on `progress`: `records_processed` counts only the rows that MATCHED an e
 
 ---
 
+{{claude}}
 ## NEXT STEPS
 
 | Observation                          | Suggest                                              | Calls                          |
@@ -49,3 +50,4 @@ Caveat on `progress`: `records_processed` counts only the rows that MATCHED an e
 | Status: complete                     | "See the imported (matched) leads"                   | leadbay_pull_leads             |
 | Pending-crawl (`uncrawled`) rows     | "Re-run the import for those domains later, once Leadbay has crawled them" | leadbay_import_leads (re-run with just the uncrawled domains, later — they re-reconcile once crawled). The added leads otherwise populate in the user's Leadbay account as the crawl completes; no live-fetch here |
 | Status: error / failed (true error)  | "Diagnose the failure"                               | leadbay_resolve_import_rows    |
+{{/claude}}

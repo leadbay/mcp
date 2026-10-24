@@ -93,12 +93,18 @@ describe("tools without apps prose are untouched on an apps surface", () => {
     }
   });
 
-  it("every other description on /chatgpt/mcp equals the commerce-free one", async () => {
+  // /chatgpt/mcp also drops the {{claude}} rendering blocks (promptforge
+  // src/claude.ts, chatgpt-no-claude-rendering.test.ts), so it can only be
+  // the commerce-free text with parts deleted, never with anything added.
+  it("every other description on /chatgpt/mcp is the commerce-free one with parts deleted", async () => {
     const chatgptBefore = await descriptions({ includeCommerce: false });
     const chatgpt = await descriptions({ includeApps: true, includeCommerce: false });
     for (const [name, text] of chatgpt) {
       if (WITH_BOARD.has(name)) continue;
-      expect(text, name).toBe(chatgptBefore.get(name));
+      const want = [...text];
+      let i = 0;
+      for (const ch of chatgptBefore.get(name)!) if (i < want.length && ch === want[i]) i++;
+      expect(i, name).toBe(want.length);
     }
   });
 });

@@ -69,6 +69,7 @@ Build a cold-calling cheat sheet for one campaign. The composite joins two backe
 
 ---
 
+{{claude}}
 ## RENDER — call-sheet markdown (PRIMARY)
 
 This is a cold-calling surface. The user wants to scan → pick → tap-to-call → dictate outcome → next. Render one CARD per lead, sorted by AI score:
@@ -84,6 +85,7 @@ This is a cold-calling surface. The user wants to scan → pick → tap-to-call 
 | **[<First Last>](<linkedin_url>)** | [<phone bare>](<phone_tel_url>) | <job_title> | _(no notes)_ |
 
 <short callout — "📞 0 prior touches" / "⚠ Also in 2 teammates' campaigns" if applicable>
+{{/claude}}
 
 ---
 ```
@@ -110,6 +112,7 @@ This is a cold-calling surface. The user wants to scan → pick → tap-to-call 
 - Lead cards sorted by AI score desc; contacts within each card sorted AI-pinned > recommended > has-phone.
 - If `last_action_headline` is present OR `progress.in_progress > 0` OR `progress.declined > 0`, render the card with a 📞 prefix instead of ⚡ — at-a-glance "already touched" vs "still cold". Do not use `progress.total_contacts`; that is contact coverage, not outreach history.
 
+{{claude}}
 ## RENDER — map widget (SECONDARY, when user asks for a route)
 
 When the user says "plot my call list on a map" / "where are these leads" / "route my calling tour", route to `places_map_display_v0` using the `map_locations` array verbatim:
@@ -122,11 +125,13 @@ places_map_display_v0({
 ```
 
 The composite has already built the notes string per place card (one sentence with the top contact's phone inline). After the widget, emit the standard call-sheet card list below it for the rich detail — the carousel renders bare phones as `tel:` but strips markdown.
+{{/claude}}
 
 {{include:gates/builtin-widgets}}
 
 ---
 
+{{claude}}
 ## NEXT STEPS — wire the dictation+epilogue loop
 
 After the user reports a call ("Called Bree, she wants pricing"), route to `leadbay_report_outreach` with BOTH `note` (the call summary) AND `epilogue_status` in one call. The four epilogue values:
@@ -137,6 +142,7 @@ After the user reports a call ("Called Bree, she wants pricing"), route to `lead
 - `NOT_INTERESTED_LOST` — declined / not a fit.
 
 The `verification` field is REQUIRED — pass `{source: "user_confirmed", ref: <user's exact words>}` since calls don't have message-ids.
+{{/claude}}
 
 {{include:headers/tool-when-to-use}} the user wants to actually WORK a campaign — calling session, dictation loop, follow-up sequence. Pair with the `leadbay_work_campaign` prompt for the end-to-end orchestrator (pick campaign → render → call → record loop).
 
