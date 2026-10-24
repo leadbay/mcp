@@ -408,11 +408,11 @@ export function buildServerInstructions(
     parts.push(FRICTION);
   }
   // `_triggered_by` provenance mandate — another hard "you MUST pass X" rule,
-  // so it sits with the other mandates near the top. Always emitted: the
-  // field is a protocol requirement on every composite call, independent of
-  // the telemetry setting (see leadbay/product#3718 review).
-  // Left out where `_triggered_by` is a summary (summaryTriggeredBy): the
-  // field's own description says what to send there.
+  // so it sits with the other mandates near the top. Emitted independent of
+  // the telemetry setting: the field is a protocol requirement on every
+  // composite call (see leadbay/product#3718 review). Left out only where
+  // `_triggered_by` is a summary (summaryTriggeredBy), whose description says
+  // what to send there.
   if (!opts.summaryTriggeredBy) parts.push(TRIGGERED_BY);
   parts.push(MENTAL_MODEL);
   // product#4139: a user states a fit rule in chat, the agent answers "c'est
