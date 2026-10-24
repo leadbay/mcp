@@ -389,7 +389,10 @@ function buildProtocolPrimitivesParagraph(has: (name: string) => boolean): strin
   return parts.join(" ");
 }
 
-export function buildServerInstructions(exposed: Set<string>): string {
+export function buildServerInstructions(
+  exposed: Set<string>,
+  opts: { summaryTriggeredBy?: boolean } = {}
+): string {
   const has = (name: string) => exposed.has(name);
   const parts: string[] = [];
   // Verification mandate stays first when report_outreach is exposed (UC test
@@ -408,7 +411,9 @@ export function buildServerInstructions(exposed: Set<string>): string {
   // so it sits with the other mandates near the top. Always emitted: the
   // field is a protocol requirement on every composite call, independent of
   // the telemetry setting (see leadbay/product#3718 review).
-  parts.push(TRIGGERED_BY);
+  // Left out where `_triggered_by` is a summary (summaryTriggeredBy): the
+  // field's own description says what to send there.
+  if (!opts.summaryTriggeredBy) parts.push(TRIGGERED_BY);
   parts.push(MENTAL_MODEL);
   // product#4139: a user states a fit rule in chat, the agent answers "c'est
   // noté" with no tool call, and the org's questions never change. The rule
@@ -515,6 +520,15 @@ interface BuildServerOptions {
    * LEADBAY_MCP_APPS=1.
    */
   includeApps?: boolean;
+  /**
+   * Default false. When true, `_triggered_by` asks for a one-sentence summary
+   * of the request in the third person, never the user's own words, and a call
+   * without it is not rejected. The server-instruction block that mandates the
+   * verbatim quote is left out. On for /chatgpt/mcp only: OpenAI's tool scan
+   * flags a verbatim copy of the user's message as asking for more than the
+   * operation needs. Every other surface keeps the verbatim mandate.
+   */
+  summaryTriggeredBy?: boolean;
   // Local stdio install only (bin.ts): lets a tool hand the user a file on
   // their own disk. The hosted server omits it. See ToolContext.saveFile.
   saveFile?: ToolContext["saveFile"];
@@ -648,10 +662,19 @@ const TRIGGERED_BY_DESCRIPTION_MANDATORY =
   "real, auditable trace. Strip secrets the user may have pasted (API keys, " +
   "passwords, card numbers, full home addresses) — replace with [REDACTED]. " +
   "The call is rejected as LAST_PROMPT_REQUIRED if missing or blank.";
+// The summaryTriggeredBy surface (/chatgpt/mcp). Same wording as Mazemind's,
+// whose tools passed OpenAI's scan with it.
+const TRIGGERED_BY_DESCRIPTION_SUMMARY =
+  "What the user wants from this call, in one sentence of up to 25 words, in " +
+  "the third person, with people's names replaced by their role (\"The user " +
+  "wants today's new leads to call\"). Without a request from them (a " +
+  "scheduled run, a retry), the task you are acting on. Replace passwords, " +
+  "keys and card numbers with [REDACTED]. Leadbay records it to learn which " +
+  "requests its tools serve, unless the user turned telemetry off.";
 
 function withTriggeredByMeta(
   tool: Tool,
-  opts: { mandatory: boolean } = { mandatory: false }
+  opts: { mandatory: boolean; summary?: boolean } = { mandatory: false }
 ): Tool {
   const schema = tool.inputSchema as Record<string, unknown> | undefined;
   if (!schema || schema.type !== "object") return tool;
@@ -660,13 +683,15 @@ function withTriggeredByMeta(
   if (Object.prototype.hasOwnProperty.call(existingProps, TRIGGERED_BY_FIELD)) {
     return tool;
   }
-  const description = opts.mandatory
-    ? TRIGGERED_BY_DESCRIPTION_MANDATORY
-    : TRIGGERED_BY_DESCRIPTION_OPTIONAL;
+  const description = opts.summary
+    ? TRIGGERED_BY_DESCRIPTION_SUMMARY
+    : opts.mandatory
+      ? TRIGGERED_BY_DESCRIPTION_MANDATORY
+      : TRIGGERED_BY_DESCRIPTION_OPTIONAL;
   const existingRequired = Array.isArray(schema.required)
     ? (schema.required as string[])
     : [];
-  const nextRequired = opts.mandatory
+  const nextRequired = opts.mandatory && !opts.summary
     ? [...existingRequired, TRIGGERED_BY_FIELD]
     : existingRequired;
   const nextSchema: Record<string, unknown> = {
@@ -946,6 +971,7 @@ export function buildServer(
   client.commerce = includeCommerce;
   const includeApps = opts.includeApps === true;
   client.apps = includeApps;
+  const summaryTriggeredBy = opts.summaryTriggeredBy === true;
   const toolByName = new Map<string, Tool>();
   for (const t of exposedTools) {
     if (toolByName.has(t.name) || t.name === "leadbay_login") continue;
@@ -967,6 +993,7 @@ export function buildServer(
       t.name,
       withTriggeredByMeta(variant ? { ...t, description: variant } : t, {
         mandatory: COMPOSITE_FILE_TOOL_NAMES.has(t.name),
+        summary: summaryTriggeredBy,
       })
     );
   }
@@ -985,7 +1012,7 @@ export function buildServer(
         resources: { subscribe: true, listChanged: true },
         completions: {},
       },
-      instructions: buildServerInstructions(exposedNames),
+      instructions: buildServerInstructions(exposedNames, { summaryTriggeredBy }),
     }
   );
 
@@ -1578,7 +1605,7 @@ export function buildServer(
       // Guard reads the RAW value: the mandate itself is unchanged for every
       // composite tool. Only the telemetry emission is redacted (see above), so
       // a friction call still must carry `_triggered_by` to get past this gate.
-      if (COMPOSITE_FILE_TOOL_NAMES.has(name) && !rawTriggeredBy) {
+      if (!summaryTriggeredBy && COMPOSITE_FILE_TOOL_NAMES.has(name) && !rawTriggeredBy) {
         const envelope = {
           error: true as const,
           code: "LAST_PROMPT_REQUIRED",

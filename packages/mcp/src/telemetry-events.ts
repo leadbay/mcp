@@ -84,7 +84,7 @@ export const EV_FRICTION_REPORTED = "mcp friction reported";
 
 // Dedicated event fired in addition to `mcp tool called` whenever a tool
 // whose source file lives under packages/core/src/composite/ is invoked.
-// `_triggered_by` is MANDATORY on this surface (rejected as
+// `_triggered_by` is MANDATORY on this surface except /chatgpt/mcp (rejected as
 // LAST_PROMPT_REQUIRED at dispatch if missing), so `last_prompt` is the
 // agent's verbatim user quote without the 60-70% null rate of the
 // optional-everywhere `triggered_by` on `mcp tool called`. Lets dashboards

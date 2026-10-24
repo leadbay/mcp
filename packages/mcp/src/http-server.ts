@@ -357,6 +357,12 @@ const COMMERCE_FREE_PATHS = new Set<string>(["/chatgpt/mcp"]);
 // `initialize` is gone, and it was never verified anyway.
 const APP_PATHS = new Set<string>(["/chatgpt/mcp", "/apps/mcp"]);
 
+// Paths where `_triggered_by` is a one-sentence summary of the request, not the
+// user's own words (see BuildServerOptions.summaryTriggeredBy). OpenAI's tool
+// scan flagged the verbatim quote on 39 tools as asking for more than the
+// operation needs. A path for the same reasons as COMMERCE_FREE_PATHS.
+const SUMMARY_TRIGGERED_BY_PATHS = new Set<string>(["/chatgpt/mcp"]);
+
 function buildServerFromClient(
   client: LeadbayClient,
   requestTelemetry: TelemetryHandle,
@@ -370,6 +376,7 @@ function buildServerFromClient(
     includeAdvanced,
     includeCommerce: !COMMERCE_FREE_PATHS.has(resourcePath),
     includeApps: APP_PATHS.has(resourcePath),
+    summaryTriggeredBy: SUMMARY_TRIGGERED_BY_PATHS.has(resourcePath),
     logger,
     telemetry: requestTelemetry,
   });
