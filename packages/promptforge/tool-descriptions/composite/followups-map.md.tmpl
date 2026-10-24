@@ -54,6 +54,7 @@ Plot the user's follow-up leads on an interactive map for travel / in-person / "
 
 ---
 
+{{claude}}
 ## RENDER — host-native map widget (REQUIRED)
 
 When the host exposes Claude's `places_map_display_v0`, route the leads there. It owns the visual surface: markers, place-card carousel, "Notes from Claude".
@@ -126,9 +127,11 @@ Contact: **[Irving Enciso](<linkedin URL>)**, Regional Operations Manager · ☎
 ```
 
 Keep it short — 1 lead per ~3 lines, top 3–5 most relevant. The LinkedIn-linked contact name lives here (chat markdown works), the channels are listed as ` · `-separated pills. **Do NOT enumerate the same leads as a markdown table** — this list-form summary is the chat-side detail surface.
+{{/claude}}
 
 {{include:linking/contact-linkedin}}
 
+{{claude}}
 Open with **one short intro sentence** in chat ("Five lead visits across NYC for your trip next week — three in Midtown, plus Long Island and one in NJ.") and then invoke the widget, then the chat-side list above. **No markdown table.**
 
 **After the widget renders, end the turn with the NEXT STEPS surface** — not with a prose question. See "GATE — PREFER BUILT-IN HOST WIDGETS" below: surface 2–4 mutually-exclusive moves via your host's choice widget (`ask_user_input_v0` or `AskUserQuestion`) if the host exposes it, else as a short bulleted list. "Want me to plot these on a map or jump to outreach for Atlas?" is exactly the prose pattern to AVOID — it's a `single_select` with two options.
@@ -151,6 +154,7 @@ If the host doesn't expose the native map, emit per-lead markdown blocks in this
 Same one-channel-per-line discipline — newlines between channels so the carousel renders them as scannable properties (vs a wall of prose). Same auto-linkify rules: bare phone, bare email, markdown-wrapped contact name.
 
 The response payload carries everything you need: `lead.company_name` (or `name`), `lead.location.city / country / full / pos`, `lead.score`, `lead.ai_agent_lead_score`, `lead.recommended_contact.{first_name, last_name, job_title, linkedin_page, email, phone_number}`, `lead.phone_numbers[]`, `lead.website`, `lead.short_description`, `lead.last_monitor_action` + `last_monitor_action_at`. Score callout uses `ai_agent_lead_score` when present, else `score`.
+{{/claude}}
 
 {{include:gates/builtin-widgets}}
 

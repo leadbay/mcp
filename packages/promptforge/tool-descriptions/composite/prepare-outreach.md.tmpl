@@ -55,11 +55,13 @@ Each call marks the lead seen so it ages out of the Discover "new" view. That is
 
 ---
 
+{{claude}}
 ## RENDER — host-native message composer is the PRIMARY surface
 
 Route every draft through `message_compose_v1` (Claude's email composer). Above it, emit ONE short markdown context paragraph: score callout, sector fit, linked contact name, bare phone/email pills. Do NOT also paste the email body into chat prose — the composer IS the visual.
 
 Variant shape: 1–3 entries, labels per the widget table below. `kind: "email"` needs `subject`; call openers use `kind: "other"` with the opener in `body`.
+{{/claude}}
 
 {{include:gates/builtin-widgets}}
 
