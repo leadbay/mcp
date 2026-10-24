@@ -944,27 +944,29 @@ Examples that should NOT invoke this tool (sound similar, route elsewhere):
 
 ## RENDER (quick)
 
-Two-tier render. Top: one-line summary
-("Limoges Tour: 9 leads · 4 contacted · 1 meeting · 0 declined").
-Then a markdown table per lead:
-| Lead | Score | Contacts | Last action | Also in |
-Each row's "Also in" column lists \`affiliation.own_campaigns[]\`
-names (with a ⚠ suffix if \`other_users_campaign_count > 0\`,
-indicating teammates also have it). Sort by progress.headline
-recency or by score desc — pick whichever surfaces "needs
-attention" leads first.
+Top: ONE headline from \`summary\` + \`summary_coverage\`, never from
+\`items\`; the campaign name comes from list_campaigns or the user, not
+this response. \`complete\` true → "Limoges Tour: 9 leads · 4 contacted ·
+1 in progress · 0 declined". \`complete\` false → "Limoges Tour: 130
+contacted · 40 in progress · 12 declined across 412 of 1,340 leads
+counted"; \`total_leads\` null → "… across 412 leads counted; campaign
+size unknown". Then the per-lead table from \`items\` (see Table).
 
 ---
 
-Per-lead progression view for one campaign. Wraps \`GET /campaigns/{id}/leads\` (paginated). For every lead in the campaign:
+Per-lead progression view for one campaign. Wraps \`GET /campaigns/{id}/leads\` (paginated). For every lead on the page:
 
 - **lead** — full \`LeadPayload\` (same shape \`pull_leads\` / \`pull_followups\` return), so the agent has score, contacts, ai_summary, location, etc. without an extra round trip.
 - **progress** — \`{total_contacts, in_progress, declined, headline}\`. \`total_contacts\` is reachable contact coverage; do not treat it as prior outreach. \`headline\` is the most recent \`InteractionType\` (CONTACTED / MEETING_BOOKED / DECLINED / etc.) and is the load-bearing field for "what stage is this lead at".
 - **affiliation** — \`{own_campaigns: CampaignRefPayload[], other_users_campaign_count}\`. \`own_campaigns\` lists OTHER campaigns of yours this lead is in (overlap detection — avoids the rep doubling outreach across two of their own campaigns). \`other_users_campaign_count\` is how many teammates also have this lead in one of THEIR campaigns. This is the only cross-user signal the campaign API exposes.
 
-The composite also adds a \`summary\` block computed across the current page (\`{page_size, contacted, in_progress, declined}\`) so a quick "how is this campaign doing" prompt doesn't need to roll up the items array itself.
+The composite also adds a \`summary\` block — \`{page_size, contacted, in_progress, declined}\` — counted across the WHOLE campaign, not the page in \`items\`: when the campaign has more than one page the tool reads the other pages too (same \`count\`, at most 20 pages in one call) and counts each lead once. \`contacted\` = leads with a headline, an open conversation or a decline; \`in_progress\` = leads with at least one open conversation; \`declined\` = leads with a recorded decline. \`page_size\` is the row count of \`items\` — this page only. There is no meeting count here; per lead, \`progress.headline === "MEETING_BOOKED"\` is the signal.
 
-**Pagination**: \`count\` defaults to 50; \`page\` is 0-indexed. For campaigns with hundreds of leads, page through and concatenate the summary counts.
+\`summary_coverage\` — \`{leads, total_leads, complete}\` — says what those counts cover. \`leads\` is the number of leads counted. \`total_leads\` is the campaign's size from \`pagination.total\`, or null when the response carried no usable total: then say "\`leads\` leads counted; campaign size unknown". \`complete\` is true only when every page was read and the leads counted equal \`total_leads\`. It is false when the campaign has more pages than one call reads, when a page could not be read, when any page read has a page number that is missing, not a whole number or not the page that was asked for, when a later page reported a different total or page count, when a lead had no id (it is counted, but it cannot be told apart from another), or when the leads counted differ from the total. When it is false, say "\`leads\` of \`total_leads\` leads counted" — the leads counted are not necessarily the first ones — or, if \`leads\` is greater than \`total_leads\`, "\`leads\` leads counted; the campaign reported \`total_leads\`". Never present the counts as the whole campaign.
+
+**Table**: one row per entry in \`items\` — \`| Lead | Score | Contacts | Last action | Also in |\`. "Also in" lists \`affiliation.own_campaigns[]\` names, with a ⚠ suffix when \`other_users_campaign_count > 0\` (teammates also have the lead). Sort by \`progress.headline\` recency or by score desc — whichever surfaces the leads needing attention first.
+
+**Pagination**: \`count\` defaults to 50; \`page\` is 0-indexed and only moves the per-lead table (\`items\`). The summary is re-counted on every call from the pages that call reads, so it can change between calls as the campaign changes, and a capped read counts a different set of pages when a different \`page\` is requested. Never add summaries from two calls together; report the latest call's summary with its coverage. A \`page\` past the end returns an empty \`items\`; the summary is still counted from the campaign's pages.
 
 ---
 
@@ -972,7 +974,7 @@ WHEN TO USE: after \`leadbay_list_campaigns\` (or when the user named a specific
 
 WHEN NOT TO USE: for cross-campaign pulse (use \`leadbay_list_campaigns\`); to drill into a lead's full timeline (use \`leadbay_get_lead_activities\` or \`leadbay_research_lead_by_id\`); to log outreach (\`leadbay_report_outreach\`).
 
-**Response**: \`{items, pagination, summary, _meta}\`. Use the \`summary\` for the one-line headline; use \`items\` for the per-lead table.
+**Response**: \`{items, pagination, summary, summary_coverage, _meta}\`. \`summary\` + \`summary_coverage\` → the one headline; \`items\` → the table for this page only. \`pagination\` is \`{page, pages, total}\`, each a whole number or null when the backend's value was missing, text or not a whole number.
 
 ---
 `;
