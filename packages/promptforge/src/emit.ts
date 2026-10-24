@@ -188,7 +188,8 @@ export function emit(result: AssembleResult): EmitOutput {
   }
   toolParts.push("};\n");
   toolParts.push(
-    "\n// The same with the {{commerce}} blocks deleted too — /chatgpt/mcp.\n",
+    "\n// The same with the {{commerce}} blocks deleted too, and the {{claude}}\n" +
+      "// rendering and NEXT STEPS blocks deleted — /chatgpt/mcp.\n",
   );
   toolParts.push("export const APPS_NO_COMMERCE_TOOL_DESCRIPTIONS: Record<string, string> = {\n");
   for (const t of result.toolDescriptions) {

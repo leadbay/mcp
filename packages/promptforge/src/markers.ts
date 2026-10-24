@@ -16,7 +16,8 @@
 //     space INSIDE the markers, `resets{{tag}} (or top up){{/tag}}.`, so
 //     deleting it leaves `resets.` and not a double space.
 //
-// Two tags use this today: `{{commerce}}` (commerce.ts) and `{{apps}}` (apps.ts).
+// Three tags use this today: `{{commerce}}` (commerce.ts), `{{apps}}` (apps.ts)
+// and `{{claude}}` (claude.ts).
 
 export type MarkerMode = "with" | "without";
 

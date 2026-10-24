@@ -1,5 +1,6 @@
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
+import { isClaudeRenderingSnippet, wrapClaude } from "./claude.js";
 
 const INCLUDE_PATTERN = /\{\{include:([a-z0-9_\-/]+)\}\}/g;
 const MAX_DEPTH = 8;
@@ -17,7 +18,7 @@ export interface ResolveOptions {
 }
 
 export function resolveSnippets(body: string, opts: ResolveOptions): string {
-  return resolveRecursive(body, opts.snippetsRoot, opts.sourcePath, [], 0);
+  return resolveRecursive(body, opts.snippetsRoot, opts.sourcePath, [], 0, false);
 }
 
 function resolveRecursive(
@@ -26,6 +27,9 @@ function resolveRecursive(
   sourcePath: string,
   stack: string[],
   depth: number,
+  // Inside a snippet already wrapped in {{claude}}: its own includes are not
+  // wrapped again, which would nest the pairs (claude.ts).
+  inClaude: boolean,
 ): string {
   if (depth > MAX_DEPTH) {
     throw new SnippetError(
@@ -48,13 +52,16 @@ function resolveRecursive(
       );
     }
     const content = readFileSync(path, "utf8");
-    return resolveRecursive(
+    const wrap = !inClaude && isClaudeRenderingSnippet(snippetName);
+    const resolved = resolveRecursive(
       content,
       snippetsRoot,
       sourcePath,
       [...stack, snippetName],
       depth + 1,
+      inClaude || wrap,
     );
+    return wrap ? wrapClaude(resolved) : resolved;
   });
 }
 

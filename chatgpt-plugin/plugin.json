@@ -1,0 +1,110 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "leadbay",
+  "version": "0.46.1",
+  "description": "Work your Leadbay B2B prospecting pipeline from ChatGPT: today's scored leads, company research, outreach drafts, trip planning and list imports, in the user's own Leadbay account.",
+  "author": {
+    "name": "Leadbay",
+    "url": "https://leadbay.ai"
+  },
+  "homepage": "https://leadbay.ai",
+  "repository": "https://github.com/leadbay/mcp",
+  "license": "MIT",
+  "keywords": [
+    "sales",
+    "prospecting",
+    "leads",
+    "b2b",
+    "crm",
+    "outreach"
+  ],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Leadbay",
+        "shortDescription": "Work your B2B lead pipeline",
+        "longDescription": "Leadbay is a B2B prospecting workspace that finds and scores companies against a seller's ideal customer profile. This plugin connects ChatGPT to the user's own Leadbay account, so they can work their pipeline in plain language instead of clicking through the web app.\n\nTypical sessions:\n- Pull the day's fresh, AI-scored prospects. In ChatGPT they open as the Leadbay triage board: each lead with its score, why it fits and who to contact.\n- Research one company in depth: qualification signals, contacts, recent web findings, past notes and activity.\n- Draft a personalised outreach email or call opener for a named contact.\n- Plan which accounts to visit in a city before a trip, on the Leadbay route planner board.\n- Import a list of companies and have Leadbay qualify them.\n- Log what was actually sent or said, so the pipeline stays accurate.\n\nIt also covers the account admin a seller needs along the way: lenses (saved audiences), campaigns, contacts, CRM custom fields, and the qualification questions every lead is scored against.\n\nLead and contact data is read and written only in the signed-in user's own Leadbay workspace, over an OAuth token the user grants. Three tools are the exception, and none of them carries lead or contact data: \"send feedback\" delivers a message the user wrote to the Leadbay team's Sentry inbox, \"report a problem\" sends one product-analytics event to PostHog with the user's own words, and the board runtime reports its own failures as a short error code with no user text. The first two run only when the user asks or accepts an offer. Product-usage telemetry can be turned off at any time by asking ChatGPT to disable Leadbay telemetry.\n\nThe plugin never sends email or messages on the user's behalf: it drafts outreach and records the outcome the user reports.\n\nWho it is for: B2B sales and business-development teams with a Leadbay account.",
+        "developerName": "Leadbay",
+        "category": "Business & Operations",
+        "capabilities": [
+          "Show today's AI-scored prospects on the triage board",
+          "Research a company: signals, contacts, notes and activity",
+          "Draft outreach emails and call openers; never sends them",
+          "Plan which accounts to visit in a city on the route planner",
+          "Import a list of companies and have Leadbay qualify them",
+          "Log outreach the user reports, and manage lenses, campaigns and contacts"
+        ],
+        "websiteURL": "https://leadbay.ai",
+        "supportURL": "https://docs.leadbay.app/doc",
+        "privacyPolicyURL": "https://leadbay.ai/privacy-policy",
+        "termsOfServiceURL": "https://leadbay.ai/terms-of-use",
+        "defaultPrompt": [
+          "Get me new leads I should prospect today",
+          "I am travelling to San Francisco. Which leads should I visit there? Help me organise my day.",
+          "I'm cold-calling tomorrow. Get me qualified new prospects with their best decision-maker contacts."
+        ],
+        "brandColor": "#000000",
+        "brandColorDark": "#FFFFFF",
+        "composerIcon": "./assets/composer-icon.png",
+        "logo": "./assets/logo.png",
+        "logoDark": "./assets/logo-dark.png"
+      },
+      "review": {
+        "test_cases": {
+          "positive": [
+            {
+              "description": "Today's AI-scored prospects, the core daily workflow",
+              "prompt": "Using Leadbay, show me today's leads.",
+              "tools_triggered": "leadbay_pull_leads",
+              "expected_behavior": "Opens the Leadbay triage board with the account's fresh prospects ranked by fit score, each with a short reason it fits and the recommended contact. ChatGPT does not repeat the same rows as a table under the board."
+            },
+            {
+              "description": "A first look at what Leadbay can do, right after connecting",
+              "prompt": "I just connected Leadbay. What can it do for me?",
+              "tools_triggered": "leadbay_welcome",
+              "expected_behavior": "Opens the Leadbay welcome board: what Leadbay learned about the user's business (intent signals, qualification questions, ideal buyer profile) and the things the user can ask for next, each a click away."
+            },
+            {
+              "description": "Research one named company in the user's pipeline",
+              "prompt": "Using Leadbay, tell me what we know about Demandbase (demandbase.com).",
+              "tools_triggered": "leadbay_research_lead_by_name_fuzzy",
+              "expected_behavior": "Matches Demandbase by its website and shows one company card: fit score and qualification signals, contacts with their titles, recent web findings, and prior notes or activity if any exist."
+            },
+            {
+              "description": "Draft outreach for a named company; drafts only, never sends",
+              "prompt": "Using Leadbay, draft a personalised first outreach email to the best contact at Demandbase (demandbase.com).",
+              "tools_triggered": "leadbay_research_lead_by_name_fuzzy, leadbay_prepare_outreach",
+              "expected_behavior": "Resolves Demandbase, then returns an outreach package: the recommended contact, the angle to lead with, and two or three draft variants. Nothing is sent: the user copies or edits the draft. If no email is on file for the contact, it says so instead of inventing one."
+            },
+            {
+              "description": "Plan in-person visits before a trip to a city",
+              "prompt": "I'm in San Francisco next Tuesday. Using Leadbay, which accounts and prospects should I go and see?",
+              "tools_triggered": "leadbay_tour_plan",
+              "expected_behavior": "Returns a visit list scoped to San Francisco that mixes existing customers, qualified leads and fresh prospects, each with a one-line reason to go and the contact to ask for. If the account holds nothing in that city, it says so rather than padding the list."
+            }
+          ],
+          "negative": [
+            {
+              "description": "Open-web market research, not the user's pipeline",
+              "prompt": "Research the latest news about Apple stock and summarise analyst reactions."
+            },
+            {
+              "description": "Sending mail: the plugin drafts but has no send capability",
+              "prompt": "Send this email to jane@example.com from my Gmail account."
+            },
+            {
+              "description": "Another CRM: only Leadbay records can be changed",
+              "prompt": "Update my Salesforce opportunity stage for Acme to Closed Won."
+            }
+          ]
+        },
+        "commerce": false,
+        "commerce_description": "Leadbay sells nothing inside ChatGPT and processes no payments. Ordering contact details draws on the quota of the user's existing Leadbay plan, bought outside ChatGPT."
+      },
+      "publication": {
+        "countries": [],
+        "release_notes": "Every tool now declares readOnlyHint, destructiveHint and openWorldHint to match what it actually does, and every description opens with what the tool does. Today's leads open on the Leadbay triage board, trips on the route planner board, and first-time users get a welcome board."
+      }
+    }
+  }
+}
