@@ -88,6 +88,10 @@ jobs:
         run: pnpm -r build
       - name: Test
         run: pnpm -r test
+      - name: Typecheck
+        # `npm publish <tarball>` below runs no lifecycle scripts, so the
+        # typecheck that `prepublishOnly` used to add happens here instead.
+        run: pnpm -r typecheck
 
       - name: Verify tag matches packages/mcp/package.json version
         # Runs whenever the workflow is keyed off a tag ref — both real
@@ -132,10 +136,23 @@ jobs:
             echo "@leadbay/mcp@$VERSION already on npm — skipping"
             exit 0
           fi
+          # Every installed client runs `npx … @leadbay/mcp@latest` on each
+          # restart, so this publish reaches every seat at once. Pack once,
+          # launch that tarball the way the installers make clients launch it,
+          # and publish the same file only if it answers an MCP handshake.
+          # The tests above ran against workspace sources; this catches a
+          # tarball that is missing a file, imports something tsup did not
+          # bundle, or crashes at startup.
+          PACK_DIR="$RUNNER_TEMP/pack"
+          mkdir -p "$PACK_DIR"
+          npm pack --pack-destination "$PACK_DIR"
+          TGZ="$PACK_DIR/leadbay-mcp-$VERSION.tgz"
+          test -f "$TGZ"
+          node scripts/smoke-tarball.mjs "$TGZ" "$VERSION"
           if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
-            npm publish --access public --provenance --dry-run
+            npm publish "$TGZ" --access public --provenance --dry-run
           else
-            npm publish --access public --provenance
+            npm publish "$TGZ" --access public --provenance
           fi
 
       - name: Build .dxt bundle
