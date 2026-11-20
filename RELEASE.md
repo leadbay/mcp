@@ -21,7 +21,23 @@ npm scope: `@leadbay` must exist with publish rights for the NPM_TOKEN holder (c
    git tag mcp-v0.3.0
    git push origin mcp-v0.3.0
    ```
-5. Watch the `release` workflow in Actions. It runs `preflight-npm` → `publish-mcp` (build + test + tag/version check + `npm publish --access public --provenance`).
+5. Watch the `release` workflow in Actions. It runs `preflight-npm` → `publish-mcp` (build + test + typecheck + tag/version check, then `npm pack`, a launch of that tarball through `npx` that must answer an MCP `initialize` and `tools/list` (`packages/mcp/scripts/smoke-tarball.mjs`), and `npm publish <that tarball> --access public --provenance`).
+
+## Why the publish is gated
+
+The installers write `npx … @leadbay/mcp@latest` into every client config, so every client runs the newest release on its next restart, with the user's `LEADBAY_TOKEN` in its environment. A broken publish reaches every seat at once. The unit tests run against the workspace sources; the smoke step runs the packed tarball itself, from a clean directory with no token, and the file npm receives is the one that passed.
+
+To try it locally: `pnpm --filter @leadbay/mcp build && cd packages/mcp && npm pack && node scripts/smoke-tarball.mjs leadbay-mcp-<version>.tgz <version>`.
+
+## Rolling back a bad release
+
+Move `latest` back to the last good version. Clients pick it up on their next restart, and nothing is re-published:
+
+```bash
+npm dist-tag add @leadbay/mcp@<last-good-version> latest
+```
+
+This needs an npm maintainer of `@leadbay` (the release workflow's Trusted Publisher binding only covers `npm publish`). Then ship the fix as the next patch, as usual.
 
 ## Manual dry run
 
